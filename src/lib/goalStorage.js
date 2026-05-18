@@ -1,3 +1,14 @@
+const syncedKeyPrefixes = ["goals:"];
+const syncedExactKeys = ["goal_streak_v1"];
+
+function isSynced(key) {
+  return (
+    typeof key === "string" &&
+    (syncedKeyPrefixes.some((prefix) => key.startsWith(prefix)) ||
+      syncedExactKeys.includes(key))
+  );
+}
+
 // localStorage helpers for goals
 export function storeGet(key) {
   const v = localStorage.getItem(key);
@@ -14,12 +25,22 @@ export function storeSet(key, value) {
   if (key.startsWith("goals:")) {
     window.dispatchEvent(new CustomEvent("goals-changed"));
   }
+  if (isSynced(key)) {
+    window.dispatchEvent(
+      new CustomEvent("synced-storage-changed", { detail: { key } }),
+    );
+  }
 }
 
 export function storeDelete(key) {
   localStorage.removeItem(key);
   if (key.startsWith("goals:")) {
     window.dispatchEvent(new CustomEvent("goals-changed"));
+  }
+  if (isSynced(key)) {
+    window.dispatchEvent(
+      new CustomEvent("synced-storage-changed", { detail: { key } }),
+    );
   }
 }
 
@@ -114,6 +135,10 @@ export function runRollover() {
 // Streak calculation
 export function getStreak() {
   return storeGet("goal_streak_v1") || { count: 0, lastProcessedDate: null };
+}
+
+export function isSyncedKey(key) {
+  return isSynced(key);
 }
 
 export function runStreakCheck() {

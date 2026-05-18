@@ -26,6 +26,21 @@ export default function Dashboard() {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    const handler = () => {
+      runRollover();
+      runStreakCheck();
+      loadAll();
+    };
+
+    window.addEventListener("goals-changed", handler);
+    window.addEventListener("synced-state-changed", handler);
+    return () => {
+      window.removeEventListener("goals-changed", handler);
+      window.removeEventListener("synced-state-changed", handler);
+    };
+  }, [loadAll]);
+
   return (
     <div className="relative z-10 max-w-[1100px] mx-auto px-5 pt-[max(24px,env(safe-area-inset-top))] pb-16">
       <PageTitle />
