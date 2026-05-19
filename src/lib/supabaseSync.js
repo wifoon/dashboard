@@ -2,11 +2,14 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const APP_KEY = "dashboard_state"; // Główny klucz dla Twojej aplikacji
+const APP_KEY = "dashboard_state";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Zabezpieczenie: ładujemy klienta tylko, jeśli zmienne istnieją
+export const supabase =
+  SUPABASE_URL && SUPABASE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_KEY)
+    : null;
 
-// Prefiksy kluczy z localStorage, które chcemy synchronizować z chmurą
 const SYNCED_PREFIXES = [
   "goals:",
   "goal_streak",
@@ -102,6 +105,7 @@ function maybeApplyRemote(remote) {
 }
 
 async function pushNow() {
+  if (!supabase) return;
   const state = collectState();
   const json = JSON.stringify(state);
   if (json === lastSyncedJson) return;
@@ -153,6 +157,12 @@ function flushPushOnUnload() {
 
 // Inicjalizacja
 export async function initSupabaseSync() {
+  if (!supabase) {
+    console.error(
+      "Brak kluczy Supabase w środowisku! Synchronizacja w chmurze jest wyłączona.",
+    );
+    return;
+  }
   const { data } = await supabase
     .from("app_state")
     .select("data")
