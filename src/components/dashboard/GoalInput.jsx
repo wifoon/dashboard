@@ -12,14 +12,6 @@ export default function GoalInput({ onAdd, statusMsg }) {
     inputRef.current?.focus();
   };
 
-  const handlePolish = () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    onAdd(trimmed, true);
-    setText("");
-    inputRef.current?.focus();
-  };
-
   return (
     <div
       className="pt-3.5 mt-3.5"
@@ -33,7 +25,7 @@ export default function GoalInput({ onAdd, statusMsg }) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder="Add a goal for today…"
-          className="flex-1 py-[11px] px-[14px] rounded-xl text-[13px] outline-none transition-all"
+          className="flex-1 py-[11px] px-[14px] rounded-xl text-[13px] outline-none transition-all w-full"
           style={{
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.06)",
@@ -43,7 +35,7 @@ export default function GoalInput({ onAdd, statusMsg }) {
         />
         <button
           onClick={handleAdd}
-          className="px-5 py-[11px] rounded-xl text-[13px] font-bold shrink-0 transition-all hover:-translate-y-px"
+          className="px-6 py-[11px] rounded-xl text-[13px] font-bold shrink-0 transition-all active:scale-95"
           style={{
             background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
             color: "#0A0A0B",
@@ -52,17 +44,6 @@ export default function GoalInput({ onAdd, statusMsg }) {
           }}
         >
           + Add
-        </button>
-        <button
-          onClick={handlePolish}
-          className="px-5 py-[11px] rounded-xl text-[13px] font-bold shrink-0 transition-all hover:bg-white/[0.08]"
-          style={{
-            background: "rgba(255,255,255,0.04)",
-            color: "var(--text-primary)",
-            border: "1px solid rgba(255,255,255,0.10)",
-          }}
-        >
-          ✨ Polish
         </button>
       </div>
       {statusMsg && (

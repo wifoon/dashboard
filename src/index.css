@@ -171,3 +171,22 @@
     transform: rotate(45deg) scale(1);
   }
 }
+
+@keyframes priority-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+    border-top-color: rgba(239, 68, 68, 0.8);
+  }
+  50% {
+    box-shadow: 0 -4px 20px 0 rgba(239, 68, 68, 0.15);
+    border-top-color: rgba(239, 68, 68, 1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    border-top-color: rgba(239, 68, 68, 0.8);
+  }
+}
+
+.note-priority {
+  animation: priority-glow 3s infinite ease-in-out;
+}

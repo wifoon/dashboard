@@ -4,7 +4,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const APP_KEY = "dashboard_state";
 
-// Zabezpieczenie: ładujemy klienta tylko, jeśli zmienne istnieją
 export const supabase =
   SUPABASE_URL && SUPABASE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_KEY)
@@ -15,13 +14,16 @@ const SYNCED_PREFIXES = [
   "goal_streak",
   "stack:",
   "po_coach",
-  "po_water",
+  "cal:",
+  "habits:",
 ];
 
 let pushTimer = null;
 let suppressSync = false;
 let pendingRemote = null;
 let lastSyncedJson = null;
+let currentUserId = null;
+let realTimeChannel = null;
 
 function isSyncedKey(key) {
   return SYNCED_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -50,7 +52,6 @@ function isUserEditing() {
   return false;
 }
 
-// Przechwytywanie zapisów do localStorage
 const origSet = localStorage.setItem.bind(localStorage);
 const origRemove = localStorage.removeItem.bind(localStorage);
 
@@ -70,7 +71,6 @@ function applyRemoteState(remote) {
   let changed = false;
 
   try {
-    // Aplikowanie nowych danych
     for (const k of Object.keys(remote)) {
       const incoming = JSON.stringify(remote[k]);
       const local = localStorage.getItem(k);
@@ -79,7 +79,6 @@ function applyRemoteState(remote) {
         changed = true;
       }
     }
-    // Usuwanie kluczy, których nie ma w chmurze
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (isSyncedKey(k) && !(k in remote)) {
@@ -92,7 +91,7 @@ function applyRemoteState(remote) {
   }
 
   if (changed) {
-    window.dispatchEvent(new CustomEvent("storage-synced")); // Sygnał dla Reacta do re-renderu
+    window.dispatchEvent(new CustomEvent("storage-synced"));
   }
 }
 
@@ -105,7 +104,7 @@ function maybeApplyRemote(remote) {
 }
 
 async function pushNow() {
-  if (!supabase) return;
+  if (!supabase || !currentUserId) return;
   const state = collectState();
   const json = JSON.stringify(state);
   if (json === lastSyncedJson) return;
@@ -114,8 +113,13 @@ async function pushNow() {
     const { error } = await supabase
       .from("app_state")
       .upsert(
-        { key: APP_KEY, data: state, updated_at: new Date().toISOString() },
-        { onConflict: "key" },
+        {
+          user_id: currentUserId,
+          key: APP_KEY,
+          data: state,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id, key" },
       );
 
     if (!error) lastSyncedJson = json;
@@ -125,59 +129,31 @@ async function pushNow() {
 }
 
 function schedulePush() {
-  if (suppressSync) return;
+  if (suppressSync || !currentUserId) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(pushNow, 250);
 }
 
-function flushPushOnUnload() {
-  const state = collectState();
-  const json = JSON.stringify(state);
-  if (json === lastSyncedJson) return;
+// Uruchamiane po zalogowaniu
+export async function startSync(userId) {
+  if (!supabase) return;
+  currentUserId = userId;
 
-  try {
-    fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=key`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates",
-      },
-      body: JSON.stringify({
-        key: APP_KEY,
-        data: state,
-        updated_at: new Date().toISOString(),
-      }),
-      keepalive: true,
-    }).catch(() => {});
-    lastSyncedJson = json;
-  } catch (e) {}
-}
-
-// Inicjalizacja
-export async function initSupabaseSync() {
-  if (!supabase) {
-    console.error(
-      "Brak kluczy Supabase w środowisku! Synchronizacja w chmurze jest wyłączona.",
-    );
-    return;
-  }
   const { data } = await supabase
     .from("app_state")
     .select("data")
     .eq("key", APP_KEY)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (data && data.data && Object.keys(data.data).length > 0) {
     lastSyncedJson = JSON.stringify(data.data);
     maybeApplyRemote(data.data);
   } else if (Object.keys(collectState()).length > 0) {
-    schedulePush(); // Wysłanie lokalnych danych, jeśli chmura jest pusta
+    schedulePush();
   }
 
-  // Nasłuchiwanie na zmiany w czasie rzeczywistym
-  supabase
+  realTimeChannel = supabase
     .channel("app_state_updates")
     .on(
       "postgres_changes",
@@ -198,7 +174,15 @@ export async function initSupabaseSync() {
     .subscribe();
 }
 
-// Event Listeners
+// Uruchamiane po wylogowaniu
+export function stopSync() {
+  if (realTimeChannel) {
+    supabase.removeChannel(realTimeChannel);
+    realTimeChannel = null;
+  }
+  currentUserId = null;
+}
+
 document.addEventListener(
   "focusout",
   () => {
@@ -211,9 +195,3 @@ document.addEventListener(
   },
   true,
 );
-
-window.addEventListener("pagehide", flushPushOnUnload);
-window.addEventListener("beforeunload", flushPushOnUnload);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) flushPushOnUnload();
-});

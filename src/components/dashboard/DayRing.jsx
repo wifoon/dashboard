@@ -40,8 +40,7 @@ function getPhaseAndStatus(percent) {
     return { phase: "MIDDAY", status: "⚡ Midday — keep moving" };
   if (percent < 75)
     return { phase: "AFTERNOON", status: "🔥 Afternoon — push it" };
-  if (percent < 90) return { phase: "EVENING", status: "⏳ Evening — wrap up" };
-  return { phase: "BEDTIME", status: "🌙 Bedtime soon" };
+  return { phase: "EVENING", status: "⏳ Evening — wrap up" };
 }
 
 export default function DayRing() {
@@ -72,8 +71,8 @@ export default function DayRing() {
         percent: 100,
         strokeColor: "#E25D7A",
         percentText: "100%",
-        phase: "PAST BEDTIME",
-        status: "⚠️ Past bedtime",
+        phase: "LATE NIGHT",
+        status: "⚠️ Late night",
         remaining: "Sleep!",
         clock: formatClock(now),
       };

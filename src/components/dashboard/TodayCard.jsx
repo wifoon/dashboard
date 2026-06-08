@@ -10,6 +10,7 @@ import {
 } from "@/lib/goalStorage";
 import GoalRow from "./GoalRow";
 import GoalInput from "./GoalInput";
+import { getCalData } from "@/lib/calendarStorage";
 
 export default function TodayCard({ goals, reload }) {
   const [showAll, setShowAll] = useState(false);
@@ -22,6 +23,11 @@ export default function TodayCard({ goals, reload }) {
   const doneCount = goals.filter((g) => g.done).length;
   const allDone = total > 0 && doneCount === total;
   const streakCount = runStreakCheck();
+
+  const calData = getCalData();
+  const todayEvents = calData.events
+    .filter((e) => e.date === dateStr)
+    .sort((a, b) => a.time.localeCompare(b.time));
 
   const showStatus = (text, color, duration = 3500) => {
     clearTimeout(statusTimer.current);
@@ -60,12 +66,6 @@ export default function TodayCard({ goals, reload }) {
   };
 
   const handleAdd = (text, polish) => {
-    if (polish) {
-      showStatus(
-        "Polish needs an Anthropic API key — added as-typed.",
-        "var(--text-tertiary)",
-      );
-    }
     const g = [...goals, { text, done: false }];
     setTodayGoals(g);
     reload();
@@ -97,17 +97,17 @@ export default function TodayCard({ goals, reload }) {
 
   return (
     <div
-      className="rounded-2xl p-5 mb-4 transition-all"
+      className="rounded-3xl p-6 mb-6 transition-all"
       style={{
         background: allDone
           ? "radial-gradient(ellipse at top, rgba(107,227,164,0.08), rgba(255,255,255,0.04) 60%)"
           : "rgba(255,255,255,0.04)",
         backdropFilter: "blur(24px) saturate(1.2)",
         boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+        border: "1px solid rgba(255,255,255,0.05)",
       }}
     >
-      {/* Header */}
-      <div className="flex justify-between items-start flex-wrap gap-3 mb-3.5">
+      <div className="flex justify-between items-start flex-wrap gap-3 mb-5">
         <div>
           <p
             className="text-[10.5px] font-bold uppercase mb-1.5"
@@ -147,7 +147,6 @@ export default function TodayCard({ goals, reload }) {
           </div>
         </div>
 
-        {/* Streak pill */}
         <div
           className="inline-flex items-center gap-1.5 py-2 px-3 rounded-full text-[11px]"
           style={{
@@ -188,9 +187,8 @@ export default function TodayCard({ goals, reload }) {
         </div>
       </div>
 
-      {/* Progress bar */}
       {total > 0 && (
-        <div className="flex gap-1 h-1.5 mb-4">
+        <div className="flex gap-1 h-1.5 mb-6">
           {goals.map((g, i) => (
             <div
               key={i}
@@ -204,7 +202,50 @@ export default function TodayCard({ goals, reload }) {
         </div>
       )}
 
-      {/* Goal list */}
+      {todayEvents.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#6ee7b7] animate-pulse"></span>
+            Wydarzenia na dziś
+          </div>
+          <div className="grid gap-2">
+            {todayEvents.map((ev) => {
+              const tag = calData.tags.find((t) => t.id === ev.tagId);
+              return (
+                <div
+                  key={ev.id}
+                  className="flex items-center gap-3 bg-white/[0.02] hover:bg-white/[0.04] transition-colors border border-white/5 rounded-2xl p-3"
+                >
+                  <div className="text-[12px] font-bold text-[#6ee7b7] font-mono bg-[#6ee7b7]/10 px-2.5 py-1 rounded-lg">
+                    {ev.time}
+                  </div>
+                  <div className="flex-1 text-[13px] font-medium text-white/90">
+                    {ev.title}
+                  </div>
+                  {tag && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/5 shrink-0">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{
+                          backgroundColor: tag.color,
+                          boxShadow: `0 0 8px ${tag.color}80`,
+                        }}
+                      />
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider"
+                        style={{ color: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {goals.length === 0 ? (
         <div
           className="text-xs italic text-center py-3.5"
@@ -266,11 +307,10 @@ export default function TodayCard({ goals, reload }) {
         </ul>
       )}
 
-      {/* Push remaining */}
       {hasUnchecked && (
         <button
           onClick={handlePush}
-          className="w-full py-2.5 rounded-xl text-xs transition-all hover:bg-white/[0.06] mb-2"
+          className="w-full py-2.5 rounded-xl text-xs transition-all hover:bg-white/[0.06] mb-2 mt-2"
           style={{
             border: "1px dashed rgba(255,255,255,0.12)",
             color: "var(--text-tertiary)",
