@@ -63,6 +63,8 @@
     min-height: 100vh;
     position: relative;
     overflow-x: hidden;
+    overscroll-behavior-y: none;
+    touch-action: pan-y;
   }
 
   body::before {

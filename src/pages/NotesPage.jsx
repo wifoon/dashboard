@@ -262,7 +262,7 @@ export default function NotesPage() {
                 "--color-border-default": "rgba(255,255,255,0.1)",
               }}
               textareaProps={{
-                placeholder: "Wpisz treść... Obsługuje formatowanie Markdown.",
+                placeholder: "Wpisz treść...",
                 onPaste: handlePaste,
               }}
             />

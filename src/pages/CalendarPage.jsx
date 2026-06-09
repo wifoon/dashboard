@@ -83,7 +83,7 @@ const ShadcnTimePicker = ({ value, onChange }) => {
             <SelectItem
               key={hour}
               value={hour}
-              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg"
+              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg text-base"
             >
               {hour}
             </SelectItem>
@@ -102,7 +102,7 @@ const ShadcnTimePicker = ({ value, onChange }) => {
             <SelectItem
               key={minute}
               value={minute}
-              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg"
+              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg text-base"
             >
               {minute}
             </SelectItem>
@@ -246,6 +246,8 @@ export default function CalendarPage() {
     setAddEventOpen(true);
   };
 
+  // Traktujemy to jako funkcję zwracającą JSX, a nie jako samodzielny komponent
+  // Zapobiega to bugowi ze znikającą klawiaturą (utrata focusu na inpucie)
   const EventFormContent = () => (
     <div className="space-y-6 pt-2">
       <div className="space-y-4">
@@ -253,14 +255,15 @@ export default function CalendarPage() {
           <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
             Tytuł wydarzenia
           </div>
+          {/* Ustawiono text-base md:text-sm aby uniknąć auto-zooma na iOS */}
           <input
             type="text"
-            placeholder="Np. Trening bouldering..."
+            placeholder="Tytuł wydarzenia..."
             value={newEvent.title}
             onChange={(e) =>
               setNewEvent({ ...newEvent, title: e.target.value })
             }
-            className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-white/30 transition-colors"
+            className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-base md:text-sm text-white outline-none focus:border-white/30 transition-colors"
             autoFocus={!isMobile}
           />
         </div>
@@ -655,9 +658,7 @@ export default function CalendarPage() {
               {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="px-6 pb-10">
-            <EventFormContent />
-          </div>
+          <div className="px-6 pb-10">{EventFormContent()}</div>
         </DrawerContent>
       </Drawer>
 
@@ -714,7 +715,7 @@ export default function CalendarPage() {
                     {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
                   </h3>
                 </div>
-                <EventFormContent />
+                {EventFormContent()}
               </div>
             )}
           </DialogContent>
@@ -768,10 +769,10 @@ export default function CalendarPage() {
               </div>
               <input
                 type="text"
-                placeholder="Np. Garaż..."
+                placeholder="Np. Ważne..."
                 value={newTag.name}
                 onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
-                className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-white/30 mb-4 transition-colors"
+                className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-base md:text-sm text-white outline-none focus:border-white/30 mb-4 transition-colors"
               />
               <div className="flex flex-wrap gap-2 justify-center mb-6 bg-black/20 p-3 rounded-2xl border border-white/5">
                 {PALETTE.map((color) => (
