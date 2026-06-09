@@ -86,6 +86,7 @@ export default function GymPage() {
     }
     saveToLS(PHOTO_KEY, photos);
   }, [photos, saveToLS]);
+
   useEffect(() => {
     const syncHandler = () => {
       try {
@@ -114,7 +115,8 @@ export default function GymPage() {
     setTimeout(() => setToastMsg(""), 2000);
   };
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   return (
     <div className="w-full max-w-6xl mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">

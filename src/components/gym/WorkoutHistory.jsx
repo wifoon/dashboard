@@ -17,7 +17,8 @@ export default function WorkoutHistory({ state, setState, photos, units }) {
       };
       sets.forEach((set, originalIdx) => {
         const safeDate = set.date || new Date().toISOString();
-        const dateStr = safeDate.slice(0, 10);
+        const dateStr = format(parseISO(safeDate), "yyyy-MM-dd");
+
         if (!grouped[dateStr])
           grouped[dateStr] = { dateStr, sets: 0, volume: 0, exercises: {} };
         grouped[dateStr].sets += 1;
