@@ -137,6 +137,7 @@ export default function CalendarPage() {
     containScroll: "trimSnaps",
   });
 
+  // Dodano nasłuchiwanie "storage-synced", żeby strona automatycznie się odświeżała przy danych z chmury
   useEffect(() => {
     setData(getCalData());
     const handler = () => setData(getCalData());
@@ -250,8 +251,6 @@ export default function CalendarPage() {
     setAddEventOpen(true);
   };
 
-  // Traktujemy to jako funkcję zwracającą JSX, a nie jako samodzielny komponent
-  // Zapobiega to bugowi ze znikającą klawiaturą (utrata focusu na inpucie)
   const EventFormContent = () => (
     <div className="space-y-6 pt-2">
       <div className="space-y-4">
@@ -259,10 +258,9 @@ export default function CalendarPage() {
           <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
             Tytuł wydarzenia
           </div>
-          {/* Ustawiono text-base md:text-sm aby uniknąć auto-zooma na iOS */}
           <input
             type="text"
-            placeholder="Tytuł wydarzenia..."
+            placeholder="Np. Trening bouldering..."
             value={newEvent.title}
             onChange={(e) =>
               setNewEvent({ ...newEvent, title: e.target.value })
@@ -419,6 +417,7 @@ export default function CalendarPage() {
           style={{
             background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
             WebkitBackgroundClip: "text",
+            backgroundClip: "text",
             WebkitTextFillColor: "transparent",
             letterSpacing: "-0.025em",
           }}
@@ -557,7 +556,6 @@ export default function CalendarPage() {
             ))}
           </div>
 
-          {/* Siatka z usuniętym wymuszonym wypełnieniem reszty ekranu, zamiast tego przewijanie zawartości */}
           <div
             className="grid grid-cols-7 gap-2 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2 content-start"
             style={{ gridAutoRows: "minmax(90px, auto)" }}
@@ -595,7 +593,6 @@ export default function CalendarPage() {
                     </span>
                   </div>
 
-                  {/* KAFELKI WYDARZEŃ (Rozszerzają okienko dynamicznie) */}
                   <div className="flex flex-col gap-1.5 mt-2 flex-1">
                     {dayEvents.slice(0, 2).map((ev) => {
                       const tag = data.tags.find((t) => t.id === ev.tagId);
@@ -632,7 +629,6 @@ export default function CalendarPage() {
                       );
                     })}
 
-                    {/* Przycisk "+X więcej" */}
                     {dayEvents.length > 2 && (
                       <div className="mt-0.5 w-full text-center text-[11px] font-bold text-white/40 hover:text-white/70 hover:bg-white/10 bg-white/5 rounded-md py-1.5 border border-white/5 transition-colors cursor-pointer">
                         +{dayEvents.length - 2} więcej...
@@ -773,7 +769,7 @@ export default function CalendarPage() {
               </div>
               <input
                 type="text"
-                placeholder="Np. Ważne..."
+                placeholder="Np. Garaż..."
                 value={newTag.name}
                 onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
                 className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-base md:text-sm text-white outline-none focus:border-white/30 mb-4 transition-colors"

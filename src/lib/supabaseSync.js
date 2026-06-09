@@ -4,9 +4,22 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const APP_KEY = "dashboard_state";
 
+// 1. Zablokowanie agresywnego Cache'owania przez Safari na iOS
 export const supabase =
   SUPABASE_URL && SUPABASE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+        global: {
+          // DODANE: Wymuszenie na poziomie przeglądarki braku pamięci podręcznej dla iOS
+          fetch: (url, options) => {
+            return fetch(url, { ...options, cache: "no-store" });
+          },
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        },
+      })
     : null;
 
 const SYNCED_PREFIXES = [
@@ -24,6 +37,8 @@ let pendingRemote = null;
 let lastSyncedJson = null;
 let currentUserId = null;
 let realTimeChannel = null;
+let isPushing = false;
+let pushPending = false;
 
 function isSyncedKey(key) {
   return SYNCED_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -31,14 +46,14 @@ function isSyncedKey(key) {
 
 function collectState() {
   const out = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
+  // Zmiana: Object.keys jest w 100% bezpieczne w iOS Safari, w przeciwieństwie do pętli po .length
+  Object.keys(localStorage).forEach((k) => {
     if (isSyncedKey(k)) {
       try {
         out[k] = JSON.parse(localStorage.getItem(k));
       } catch {}
     }
-  }
+  });
   return out;
 }
 
@@ -52,18 +67,26 @@ function isUserEditing() {
   return false;
 }
 
-const origSet = localStorage.setItem.bind(localStorage);
-const origRemove = localStorage.removeItem.bind(localStorage);
-
-localStorage.setItem = function (k, v) {
-  origSet(k, v);
-  if (!suppressSync && isSyncedKey(k)) schedulePush();
+// 2. NOWY SYSTEM WYZWALANIA ZAPISU - Odporny na blokady iOS
+// Omijamy nadpisywanie localStorage i reagujemy wyłącznie na wyzwalacze z wnętrza aplikacji.
+const triggerSync = () => {
+  if (suppressSync) return;
+  localStorage.setItem("sync_dirty", "true"); // Solidne oznaczenie: "Mam tu dane do wysłania!"
+  schedulePush();
 };
 
-localStorage.removeItem = function (k) {
-  origRemove(k);
-  if (!suppressSync && isSyncedKey(k)) schedulePush();
-};
+// Nasłuchiwanie na konkretne akcje użytkownika w zakładkach
+window.addEventListener("goals-changed", triggerSync);
+window.addEventListener("calendar-changed", triggerSync);
+window.addEventListener("notes-changed", triggerSync);
+window.addEventListener("synced-storage-changed", triggerSync);
+
+// Reagowanie na ewentualne modyfikacje lokalne między kartami
+window.addEventListener("storage", (e) => {
+  if (e.key && isSyncedKey(e.key) && !suppressSync) {
+    triggerSync();
+  }
+});
 
 function applyRemoteState(remote) {
   if (!remote || typeof remote !== "object") return false;
@@ -75,23 +98,25 @@ function applyRemoteState(remote) {
       const incoming = JSON.stringify(remote[k]);
       const local = localStorage.getItem(k);
       if (local !== incoming) {
-        origSet(k, incoming);
+        localStorage.setItem(k, incoming);
         changed = true;
       }
     }
 
-    // Zabezpieczona pętla usuwająca osierocone klucze
     const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
+    // Zmiana: Bezpieczna iteracja po usunięte klucze
+    Object.keys(localStorage).forEach((k) => {
       if (isSyncedKey(k) && !(k in remote)) {
         keysToRemove.push(k);
       }
-    }
+    });
+
     for (const k of keysToRemove) {
-      origRemove(k);
+      localStorage.removeItem(k);
       changed = true;
     }
+  } catch (e) {
+    console.error("Error applying remote state", e);
   } finally {
     suppressSync = false;
   }
@@ -102,6 +127,9 @@ function applyRemoteState(remote) {
 }
 
 function maybeApplyRemote(remote) {
+  // Żelazna zasada: Jeśli urządzenie ma NIEZAPISANE zmiany, odrzuca próby nadpisania z serwera
+  if (localStorage.getItem("sync_dirty") === "true") return;
+
   if (isUserEditing()) {
     pendingRemote = remote;
   } else {
@@ -111,9 +139,18 @@ function maybeApplyRemote(remote) {
 
 async function pushNow() {
   if (!supabase || !currentUserId) return;
+
+  // Kolejkowanie zapobiega blokowaniu połączenia przy szybkim klikaniu
+  if (isPushing) {
+    pushPending = true;
+    return;
+  }
+
+  isPushing = true;
+  pushPending = false;
+
   const state = collectState();
   const json = JSON.stringify(state);
-  if (json === lastSyncedJson) return;
 
   try {
     const { error } = await supabase.from("app_state").upsert(
@@ -126,45 +163,62 @@ async function pushNow() {
       { onConflict: "user_id, key" },
     );
 
-    if (!error) lastSyncedJson = json;
+    if (!error) {
+      lastSyncedJson = json;
+      localStorage.setItem("sync_dirty", "false"); // Zapis ukończony
+    } else {
+      console.error("Błąd zapisu Supabase:", error);
+    }
   } catch (e) {
     console.error("Błąd zapisu Supabase:", e);
   }
+
+  isPushing = false;
+  if (pushPending) schedulePush();
 }
 
 function schedulePush() {
   if (suppressSync || !currentUserId) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(pushNow, 50); // Skrócono czas zapisu
+  pushTimer = setTimeout(pushNow, 300);
 }
 
 export async function startSync(userId) {
   if (!supabase) return;
   currentUserId = userId;
 
-  const { data } = await supabase
-    .from("app_state")
-    .select("data")
-    .eq("key", APP_KEY)
-    .eq("user_id", userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("app_state")
+      .select("data")
+      .eq("key", APP_KEY)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-  if (data && data.data && Object.keys(data.data).length > 0) {
-    // Łączenie danych lokalnych (offline) z danymi z chmury zamiast bezwzględnego usuwania
-    const localState = collectState();
-    let needsPush = false;
-    for (const k in localState) {
-      if (!(k in data.data)) {
-        data.data[k] = localState[k];
-        needsPush = true;
+    const isDirty = localStorage.getItem("sync_dirty") === "true";
+
+    if (data && data.data && Object.keys(data.data).length > 0) {
+      if (isDirty) {
+        // Połączenie najnowszych danych lokalnych z danymi z serwera
+        const localState = collectState();
+        const mergedState = { ...data.data, ...localState };
+        lastSyncedJson = JSON.stringify(mergedState);
+        applyRemoteState(mergedState);
+        schedulePush(); // Wypchnięcie połączonych danych z powrotem na serwer
+      } else {
+        // Brak lokalnych zmian -> wgrywamy czyste dane z serwera
+        lastSyncedJson = JSON.stringify(data.data);
+        maybeApplyRemote(data.data);
       }
+    } else if (Object.keys(collectState()).length > 0) {
+      localStorage.setItem("sync_dirty", "true");
+      schedulePush();
     }
-    lastSyncedJson = JSON.stringify(data.data);
-    maybeApplyRemote(data.data);
-    if (needsPush) schedulePush();
-  } else if (Object.keys(collectState()).length > 0) {
-    schedulePush();
+  } catch (e) {
+    console.error("Błąd inicjalizacji sync:", e);
   }
+
+  if (realTimeChannel) supabase.removeChannel(realTimeChannel);
 
   realTimeChannel = supabase
     .channel("app_state_updates")
@@ -194,6 +248,21 @@ export function stopSync() {
   }
   currentUserId = null;
 }
+
+document.addEventListener(
+  "focusout",
+  () => {
+    setTimeout(() => {
+      if (pendingRemote && !isUserEditing()) {
+        if (localStorage.getItem("sync_dirty") !== "true") {
+          applyRemoteState(pendingRemote);
+        }
+        pendingRemote = null; // Czyścimy stare dane
+      }
+    }, 0);
+  },
+  true,
+);
 
 document.addEventListener(
   "focusout",

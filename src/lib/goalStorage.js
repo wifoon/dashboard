@@ -1,4 +1,4 @@
-const syncedKeyPrefixes = ["goals:"];
+const syncedKeyPrefixes = ["goals:", "stack:", "po_coach", "cal:", "habits:"];
 const syncedExactKeys = ["goal_streak_v1"];
 
 function isSynced(key) {
@@ -45,12 +45,10 @@ export function storeDelete(key) {
 }
 
 export function storeListKeys(prefix) {
-  const keys = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k.startsWith(prefix)) keys.push(k);
-  }
-  return keys.sort();
+  // Zmiana: Zabezpieczenie przed błędem iOS WebKit
+  return Object.keys(localStorage)
+    .filter((k) => k.startsWith(prefix))
+    .sort();
 }
 
 // 6 AM is the day boundary
