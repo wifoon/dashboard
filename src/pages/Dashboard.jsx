@@ -33,10 +33,12 @@ export default function Dashboard() {
     };
 
     window.addEventListener("goals-changed", handler);
+    window.addEventListener("calendar-changed", handler); // DODANO NASŁUCHIWANIE KALENDARZA
     window.addEventListener("storage-synced", handler);
     window.addEventListener("synced-state-changed", handler);
     return () => {
       window.removeEventListener("goals-changed", handler);
+      window.removeEventListener("calendar-changed", handler);
       window.removeEventListener("storage-synced", handler);
       window.removeEventListener("synced-state-changed", handler);
     };

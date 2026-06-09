@@ -215,7 +215,7 @@ export default function TodayCard({ goals, reload }) {
       {todayEvents.length > 0 && (
         <div className="mb-6 space-y-2">
           <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#6ee7b7] animate-pulse"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/60 animate-pulse"></span>
             Wydarzenia na dziś
           </div>
           <div className="grid gap-2">
@@ -226,7 +226,15 @@ export default function TodayCard({ goals, reload }) {
                   key={ev.id}
                   className="flex items-center gap-3 bg-white/[0.02] hover:bg-white/[0.04] transition-colors border border-white/5 rounded-2xl p-3"
                 >
-                  <div className="text-[12px] font-bold text-[#6ee7b7] font-mono bg-[#6ee7b7]/10 px-2.5 py-1 rounded-lg">
+                  <div
+                    className="text-[12px] font-bold font-mono px-2.5 py-1 rounded-lg"
+                    style={{
+                      color: tag ? tag.color : "white",
+                      backgroundColor: tag
+                        ? `${tag.color}1A`
+                        : "rgba(255,255,255,0.10)",
+                    }}
+                  >
                     {ev.time}
                   </div>
                   <div className="flex-1 text-[13px] font-medium text-white/90">
