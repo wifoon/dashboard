@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
+import { pl } from "date-fns/locale";
 import { History, Pencil, Trash2, Check, X, Plus } from "lucide-react";
 
 export default function WorkoutHistory({ state, setState, photos, units }) {
@@ -11,7 +12,7 @@ export default function WorkoutHistory({ state, setState, photos, units }) {
     const grouped = {};
     Object.entries(state.logs).forEach(([exId, sets]) => {
       const ex = state.exercises.find((e) => e.id === exId) || {
-        name: "Deleted Exercise",
+        name: "Usunięte ćwiczenie",
         bw: false,
       };
       sets.forEach((set, originalIdx) => {
@@ -108,11 +109,12 @@ export default function WorkoutHistory({ state, setState, photos, units }) {
         background: "rgba(255,255,255,0.04)",
         backdropFilter: "blur(24px) saturate(1.2)",
         boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+        border: "1px solid rgba(255,255,255,0.05)",
       }}
     >
       <div className="flex items-center gap-2 mb-6">
         <History className="w-5 h-5 text-white/50" />
-        <h2 className="text-lg font-bold text-white m-0">Workout History</h2>
+        <h2 className="text-lg font-bold text-white m-0">Historia Treningów</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
@@ -134,12 +136,14 @@ export default function WorkoutHistory({ state, setState, photos, units }) {
                 className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] text-left"
               >
                 <div>
-                  <div className="text-[13px] font-bold text-white">
-                    {format(parseISO(day.dateStr), "EEEE, MMM dd")}
+                  <div className="text-[13px] font-bold text-white capitalize">
+                    {format(parseISO(day.dateStr), "EEEE, d MMMM", {
+                      locale: pl,
+                    })}
                   </div>
                   <div className="text-[11px] text-white/40 mt-1">
-                    {day.sets} sets · {Math.round(day.volume).toLocaleString()}{" "}
-                    {units} vol
+                    {day.sets} serii · {Math.round(day.volume).toLocaleString()}{" "}
+                    {units} obj.
                   </div>
                 </div>
               </button>
@@ -284,9 +288,9 @@ export default function WorkoutHistory({ state, setState, photos, units }) {
                             })}
                             <button
                               onClick={() => addSetToEditing(exId)}
-                              className="w-full flex items-center justify-center gap-2 py-3 mt-3 text-[11px] font-bold uppercase tracking-wider text-[#6ee7b7]/80 hover:text-[#6ee7b7] bg-[#6ee7b7]/5 border border-dashed border-[#6ee7b7]/20 rounded-xl transition-all"
+                              className="w-full flex items-center justify-center gap-2 py-3 mt-3 text-[11px] font-bold uppercase tracking-wider text-[#6BE3A4]/80 hover:text-[#6BE3A4] bg-[#6BE3A4]/5 border border-dashed border-[#6BE3A4]/20 rounded-xl transition-all"
                             >
-                              <Plus className="w-4 h-4" /> Add Set
+                              <Plus className="w-4 h-4" /> Dodaj Serię
                             </button>
                           </div>
                         ) : (

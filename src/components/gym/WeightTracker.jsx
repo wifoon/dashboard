@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format, subDays, startOfDay, isSameDay, parseISO } from "date-fns";
+import { pl } from "date-fns/locale";
 import { TrendingUp } from "lucide-react";
 import {
   ChartContainer,
@@ -52,7 +53,10 @@ export default function WeightTracker({
         isSameDay(parseISO(e.dateKey), targetDate),
       );
       if (entry) lastKnown = entry.weight;
-      data.push({ date: format(targetDate, "MMM dd"), weight: lastKnown });
+      data.push({
+        date: format(targetDate, "d MMM", { locale: pl }),
+        weight: lastKnown,
+      });
     }
     return data;
   }, [wtEntries]);
@@ -128,7 +132,7 @@ export default function WeightTracker({
         </div>
       ) : (
         <div className="text-center py-8 text-white/30 text-sm border border-dashed border-white/10 rounded-2xl mb-6">
-          Log weight to see progress
+          Zaloguj wagę, aby zobaczyć postępy
         </div>
       )}
 
@@ -140,7 +144,7 @@ export default function WeightTracker({
             </div>
             <div>
               <div className="text-[10px] tracking-[0.15em] text-[#6ee7b7]/80 font-bold mb-0.5">
-                LOGGED TODAY
+                DZISIAJ ZAPISANO
               </div>
               <div className="text-base font-semibold text-white">
                 {todayEntry.weight.toFixed(1)} {units}
@@ -154,7 +158,7 @@ export default function WeightTracker({
             }}
             className="text-[#6ee7b7] font-semibold px-3 py-2 hover:bg-[#6ee7b7]/10 rounded-xl transition-colors"
           >
-            Edit
+            Edytuj
           </button>
         </div>
       ) : (
@@ -195,9 +199,13 @@ export default function WeightTracker({
           </div>
           <button
             onClick={handleSaveWeight}
-            className="bg-[#6ee7b7] hover:bg-[#5cd4a3] text-black rounded-2xl h-[60px] px-6 font-bold transition-colors shadow-lg shadow-[#6ee7b7]/20 flex items-center justify-center"
+            className="rounded-2xl h-[60px] px-6 font-bold transition-all shadow-[0_4px_14px_rgba(255,255,255,0.15)] flex items-center justify-center text-[13px] active:scale-95"
+            style={{
+              background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+              color: "#0A0A0B",
+            }}
           >
-            Save
+            Zapisz
           </button>
         </div>
       )}

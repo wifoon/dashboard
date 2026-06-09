@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { getNotes, saveNotes, generateNoteId } from "@/lib/notesStorage";
 import {
-  FileText,
   Search,
   Plus,
   Trash2,
   Edit3,
   X,
   Check,
-  Copy,
-  CheckCheck,
   AlertCircle,
-  Maximize2,
   Pin,
+  Maximize2,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import MDEditor from "@uiw/react-md-editor";
 
 // --- Komponent Lightbox do obrazków ---
 const ImageLightbox = ({ src, onClose }) => {
@@ -44,7 +41,6 @@ export default function NotesPage() {
   const [search, setSearch] = useState("");
   const [editingNote, setEditingNote] = useState(null);
   const [viewingNote, setViewingNote] = useState(null);
-  const [editTab, setEditTab] = useState("write"); // 'write' | 'preview'
   const [newTag, setNewTag] = useState("");
   const [zoomedImg, setZoomedImg] = useState(null);
 
@@ -65,7 +61,7 @@ export default function NotesPage() {
       )
       .sort((a, b) => {
         if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-        return b.createdAt - a.createdAt; // Priorytet już nie winduje do góry
+        return b.createdAt - a.createdAt;
       });
   }, [notes, search]);
 
@@ -79,7 +75,6 @@ export default function NotesPage() {
       isPinned: false,
       createdAt: Date.now(),
     });
-    setEditTab("write");
   };
 
   const handleSaveNote = () => {
@@ -144,7 +139,8 @@ export default function NotesPage() {
         const file = item.getAsFile();
         const compressed = await compressImage(file);
         const imageMarkdown = `\n![Obrazek](${compressed})\n`;
-        const cursorPosition = e.target.selectionStart;
+        const cursorPosition =
+          e.target.selectionStart || editingNote.content.length;
         const textBefore = editingNote.content.substring(0, cursorPosition);
         const textAfter = editingNote.content.substring(cursorPosition);
         setEditingNote({
@@ -175,82 +171,17 @@ export default function NotesPage() {
     });
   };
 
-  const markdownComponents = {
-    code({ node, inline, className, children, ...props }) {
-      const match = /language-(\w+)/.exec(className || "");
-      const [copied, setCopied] = useState(false);
-      const codeStr = String(children).replace(/\n$/, "");
-
-      const handleCopy = (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(codeStr);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      };
-
-      if (!inline) {
-        return (
-          <div className="relative group mt-4 mb-4 rounded-xl overflow-hidden bg-black/60 border border-white/10 shadow-inner">
-            <div className="flex justify-between items-center px-4 py-2 bg-white/5 border-b border-white/10">
-              <span className="text-[10px] text-white/40 uppercase font-mono tracking-widest">
-                {match ? match[1] : "Code"}
-              </span>
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 text-[11px] text-white/50 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md"
-              >
-                {copied ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-[#6ee7b7]" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <pre className="p-4 overflow-x-auto text-sm font-mono text-white/80 custom-scrollbar">
-              <code className={className} {...props}>
-                {children}
-              </code>
-            </pre>
-          </div>
-        );
-      }
-      return (
-        <code
-          className="bg-[#6ee7b7]/10 text-[#6ee7b7] rounded px-1.5 py-0.5 font-mono text-[0.85em]"
-          {...props}
-        >
-          {children}
-        </code>
-      );
-    },
-    img({ src, alt }) {
-      return (
-        <div
-          className="relative group inline-block my-4 cursor-zoom-in"
-          onClick={(e) => {
-            e.stopPropagation();
-            setZoomedImg(src);
-          }}
-        >
-          <img
-            src={src}
-            alt={alt}
-            className="rounded-xl border border-white/10 max-h-[400px] object-cover opacity-90 group-hover:opacity-100 transition-opacity"
-          />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-            <Maximize2 className="w-8 h-8 text-white" />
-          </div>
-        </div>
-      );
-    },
-  };
-
   // --- MODAL EDYCJI ---
   if (editingNote) {
     return (
-      <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm p-4 md:p-8 flex justify-center items-start overflow-y-auto custom-scrollbar">
-        <div className="w-full max-w-4xl bg-[#111113]/95 border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.6)] rounded-3xl p-6 flex flex-col min-h-[85vh] animate-in zoom-in-95 duration-200">
+      <div
+        className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm p-4 md:p-8 flex justify-center items-start overflow-y-auto custom-scrollbar"
+        onClick={() => setEditingNote(null)}
+      >
+        <div
+          className="w-full max-w-5xl bg-[#111113]/95 border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.6)] rounded-3xl p-6 flex flex-col min-h-[85vh] animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between gap-4 mb-6">
             <input
               type="text"
@@ -313,48 +244,31 @@ export default function NotesPage() {
             </div>
           </form>
 
-          <div className="flex bg-black/40 p-1 border border-white/10 rounded-xl mb-4 w-fit">
-            <button
-              onClick={() => setEditTab("write")}
-              className={`px-5 py-2 text-xs font-bold rounded-lg transition-colors ${editTab === "write" ? "bg-white text-black" : "text-white/50 hover:text-white"}`}
-            >
-              Edycja
-            </button>
-            <button
-              onClick={() => setEditTab("preview")}
-              className={`px-5 py-2 text-xs font-bold rounded-lg transition-colors ${editTab === "preview" ? "bg-white text-black" : "text-white/50 hover:text-white"}`}
-            >
-              Podgląd
-            </button>
+          {/* Nowoczesny Edytor Markdown */}
+          <div
+            data-color-mode="dark"
+            className="flex-1 flex flex-col mb-4 min-h-[400px]"
+          >
+            <MDEditor
+              value={editingNote.content}
+              onChange={(val) =>
+                setEditingNote({ ...editingNote, content: val || "" })
+              }
+              height="100%"
+              className="flex-1 border border-white/10 overflow-hidden rounded-2xl custom-scrollbar"
+              style={{
+                backgroundColor: "rgba(0,0,0,0.4)",
+                "--color-canvas-default": "transparent",
+                "--color-border-default": "rgba(255,255,255,0.1)",
+              }}
+              textareaProps={{
+                placeholder: "Wpisz treść... Obsługuje formatowanie Markdown.",
+                onPaste: handlePaste,
+              }}
+            />
           </div>
 
-          <div className="flex-1 flex flex-col min-h-[400px]">
-            {editTab === "write" ? (
-              <textarea
-                value={editingNote.content}
-                onChange={(e) =>
-                  setEditingNote({ ...editingNote, content: e.target.value })
-                }
-                onPaste={handlePaste}
-                placeholder="Wpisz treść... Obsługuje Markdown. Możesz wklejać kod oraz zdjęcia (Ctrl+V)!"
-                className="w-full flex-1 bg-black/40 border border-white/10 rounded-2xl p-5 text-sm text-white outline-none focus:border-[#6ee7b7]/50 resize-none font-mono custom-scrollbar"
-              />
-            ) : (
-              <div className="w-full flex-1 bg-white/[0.02] border border-white/5 rounded-2xl p-6 text-sm text-white/90 overflow-y-auto custom-scrollbar prose prose-invert max-w-none prose-img:m-0">
-                {editingNote.content ? (
-                  <ReactMarkdown components={markdownComponents}>
-                    {editingNote.content}
-                  </ReactMarkdown>
-                ) : (
-                  <span className="text-white/20 italic">
-                    Podgląd pojawi się tutaj...
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-3 pt-6 mt-4 border-t border-white/10">
+          <div className="flex justify-end gap-3 pt-6 mt-2 border-t border-white/10">
             <button
               onClick={() => {
                 setEditingNote(null);
@@ -367,9 +281,15 @@ export default function NotesPage() {
             </button>
             <button
               onClick={handleSaveNote}
-              className="px-6 py-3 rounded-xl font-bold bg-[#6ee7b7] hover:bg-[#5cd4a3] text-black shadow-[0_4px_14px_rgba(110,231,183,0.2)] transition-all flex items-center gap-2"
+              className="px-6 py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+                color: "#0A0A0B",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
+              }}
             >
-              <Check className="w-5 h-5" /> Zapisz
+              <Check className="w-4 h-4" /> Zapisz
             </button>
           </div>
         </div>
@@ -418,7 +338,6 @@ export default function NotesPage() {
               <button
                 onClick={() => {
                   setEditingNote(viewingNote);
-                  setEditTab("write");
                 }}
                 className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"
               >
@@ -433,10 +352,17 @@ export default function NotesPage() {
             </div>
           </div>
 
-          <div className="flex-1 p-6 md:p-10 overflow-y-auto custom-scrollbar prose prose-invert max-w-none prose-img:m-0">
-            <ReactMarkdown components={markdownComponents}>
-              {viewingNote.content}
-            </ReactMarkdown>
+          <div
+            data-color-mode="dark"
+            className="flex-1 p-6 md:p-10 overflow-y-auto custom-scrollbar"
+          >
+            <MDEditor.Markdown
+              source={viewingNote.content}
+              style={{
+                backgroundColor: "transparent",
+                color: "rgba(255,255,255,0.9)",
+              }}
+            />
           </div>
         </div>
         <ImageLightbox src={zoomedImg} onClose={() => setZoomedImg(null)} />
@@ -447,9 +373,9 @@ export default function NotesPage() {
   // --- WIDOK LISTY NOTATEK ---
   return (
     <div className="w-full max-w-[1100px] mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+      <div className="flex items-center justify-between mb-5 gap-4">
         <h1
-          className="text-[28px] font-bold tracking-tight max-sm:text-[22px]"
+          className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
           style={{
             background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
             WebkitBackgroundClip: "text",
@@ -458,14 +384,44 @@ export default function NotesPage() {
             letterSpacing: "-0.025em",
           }}
         >
-          Moje Notatki
+          Notatki
         </h1>
         <button
           onClick={handleCreateNote}
-          className="w-full sm:w-auto bg-white hover:bg-gray-200 text-black px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-[0_4px_14px_rgba(255,255,255,0.15)] active:scale-95"
+          className="px-6 py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2 sm:w-auto w-full"
+          style={{
+            background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+            color: "#0A0A0B",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
+          }}
         >
-          <Plus className="w-5 h-5" /> Nowa notatka
+          <Plus className="w-4 h-4" /> Nowa notatka
         </button>
+      </div>
+
+      <div
+        className="flex items-center gap-3 mb-5"
+        style={{
+          fontSize: "10.5px",
+          fontWeight: 700,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--text-tertiary)",
+        }}
+      >
+        <span
+          className="w-[18px] h-px"
+          style={{ background: "var(--text-tertiary)", opacity: 0.6 }}
+        />
+        <span>Wyszukiwarka</span>
+        <span
+          className="flex-1 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
       </div>
 
       <div className="relative mb-8">
@@ -498,23 +454,14 @@ export default function NotesPage() {
               key={note.id}
               onClick={() => setViewingNote(note)}
               className={`group rounded-3xl p-6 flex flex-col h-[240px] transition-all cursor-pointer hover:bg-white/[0.06] ${note.isPriority ? "note-priority" : ""}`}
-              style={
-                note.isPriority
-                  ? {
-                      background:
-                        "linear-gradient(180deg, rgba(239,68,68,0.04) 0%, rgba(255,255,255,0.02) 100%)",
-                      backdropFilter: "blur(24px) saturate(1.2)",
-                      boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      borderTop: "2px solid #ef4444",
-                    }
-                  : {
-                      background: "rgba(255,255,255,0.04)",
-                      backdropFilter: "blur(24px) saturate(1.2)",
-                      boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                    }
-              }
+              style={{
+                background: note.isPriority
+                  ? "linear-gradient(180deg, rgba(239,68,68,0.03) 0%, rgba(255,255,255,0.02) 100%)"
+                  : "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(24px) saturate(1.2)",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+                border: "1px solid rgba(255,255,255,0.05)",
+              }}
             >
               <div className="flex justify-between items-start mb-3">
                 <h3 className="text-lg font-bold text-white line-clamp-2 leading-tight pr-2">
@@ -539,8 +486,18 @@ export default function NotesPage() {
                 ))}
               </div>
 
-              <div className="flex-1 text-[13px] text-white/50 line-clamp-4 prose prose-invert overflow-hidden pointer-events-none">
-                <ReactMarkdown>{note.content}</ReactMarkdown>
+              <div
+                data-color-mode="dark"
+                className="flex-1 text-[13px] text-white/50 line-clamp-4 overflow-hidden pointer-events-none mt-2"
+              >
+                <MDEditor.Markdown
+                  source={note.content}
+                  style={{
+                    backgroundColor: "transparent",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "13px",
+                  }}
+                />
               </div>
 
               <div className="flex items-center justify-between pt-4 mt-4 border-t border-white/5">

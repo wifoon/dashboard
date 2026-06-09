@@ -2,6 +2,7 @@ import React from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Camera, Image as ImageIcon, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { pl } from "date-fns/locale";
 import { uid } from "@/utils/gymConfig";
 
 export default function PhotoLibraryModal({
@@ -48,12 +49,12 @@ export default function PhotoLibraryModal({
         id: uid(),
         dataUrl: compressed,
         dateKey: todayKey,
-        date: format(new Date(), "MMM dd"),
-        dateUpper: format(new Date(), "MMM dd").toUpperCase(),
+        date: format(new Date(), "d MMM", { locale: pl }),
+        dateUpper: format(new Date(), "d MMM", { locale: pl }).toUpperCase(),
         weight: lastWt ? `${lastWt.weight.toFixed(1)} ${units}` : "—",
       };
       setPhotos([newP, ...photos]);
-      showToast("Photo added");
+      showToast("Dodano zdjęcie");
     };
     reader.readAsDataURL(file);
   };
@@ -64,15 +65,15 @@ export default function PhotoLibraryModal({
         <div className="flex items-center gap-4 p-5">
           <button
             onClick={() => setOpen(false)}
-            className="w-10 h-10 flex items-center justify-center bg-white/10 rounded-full"
+            className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors rounded-full"
           >
             ←
           </button>
-          <div className="text-xl font-bold">Progress Gallery</div>
+          <div className="text-xl font-bold">Galeria Postępów</div>
         </div>
         <div className="grid grid-cols-2 gap-3 px-5 mb-4">
-          <label className="h-14 rounded-xl bg-[#6ee7b7] text-black font-bold flex items-center justify-center cursor-pointer">
-            <Camera className="w-5 h-5 mr-2" /> Take Photo
+          <label className="h-14 rounded-xl bg-[#6BE3A4] text-black font-bold flex items-center justify-center cursor-pointer active:scale-95 transition-transform">
+            <Camera className="w-5 h-5 mr-2" /> Zrób zdjęcie
             <input
               type="file"
               accept="image/*"
@@ -81,8 +82,8 @@ export default function PhotoLibraryModal({
               className="hidden"
             />
           </label>
-          <label className="h-14 rounded-xl bg-white/10 text-white font-bold flex items-center justify-center cursor-pointer hover:bg-white/20">
-            <ImageIcon className="w-5 h-5 mr-2" /> Library
+          <label className="h-14 rounded-xl bg-white/10 text-white font-bold flex items-center justify-center cursor-pointer hover:bg-white/20 active:scale-95 transition-transform">
+            <ImageIcon className="w-5 h-5 mr-2" /> Z dysku
             <input
               type="file"
               accept="image/*"
@@ -94,7 +95,7 @@ export default function PhotoLibraryModal({
         <div className="flex-1 overflow-y-auto px-5 pb-8 grid grid-cols-2 gap-3">
           {photos.length === 0 && (
             <div className="col-span-2 text-center text-white/40 mt-10">
-              No photos yet.
+              Brak zdjęć.
             </div>
           )}
           {photos.map((p) => (
@@ -107,12 +108,12 @@ export default function PhotoLibraryModal({
                 className="absolute inset-0 w-full h-full object-cover"
               />
               <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end text-xs font-medium">
-                <span className="text-[#6ee7b7]">{p.date}</span>
+                <span className="text-[#6BE3A4]">{p.date}</span>
                 <span>{p.weight}</span>
               </div>
               <button
                 onClick={() => {
-                  if (confirm("Delete this photo?"))
+                  if (confirm("Usunąć to zdjęcie?"))
                     setPhotos(photos.filter((x) => x.id !== p.id));
                 }}
                 className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

@@ -20,11 +20,16 @@ export default function GoalTicker() {
       newItems = [
         {
           status: "empty",
-          text: "No goals set for today — add one to get rolling.",
+          text: "Brak zadań na dziś — dodaj coś, aby zacząć.",
         },
       ];
     } else if (doneCount === total) {
-      newItems = [{ status: "done", text: "✓ All goals done — solid day." }];
+      newItems = [
+        {
+          status: "done",
+          text: "✓ Wszystkie zadania wykonane.",
+        },
+      ];
     } else {
       newItems = goals
         .filter((g) => !g.done)

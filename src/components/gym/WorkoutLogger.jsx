@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Pencil, LineChart as ChartIcon } from "lucide-react";
+import { Plus, Pencil, LineChart as ChartIcon, Trash2 } from "lucide-react";
 import { CONFIG } from "@/utils/gymConfig";
 import ExerciseDialog from "./modals/ExerciseDialog";
 import ExerciseProgressDialog from "./modals/ExerciseProgressDialog";
@@ -14,12 +14,14 @@ export default function WorkoutLogger({ state, setState }) {
     () => state.exercises.filter((e) => e.day === state.filterDay),
     [state.exercises, state.filterDay],
   );
+
   const currentEx = useMemo(
     () =>
       filteredExercises.find((e) => e.id === state.currentEx) ||
       filteredExercises[0],
     [filteredExercises, state.currentEx],
   );
+
   const currentLogs = currentEx ? state.logs[currentEx.id] || [] : [];
 
   useEffect(() => {
@@ -50,6 +52,25 @@ export default function WorkoutLogger({ state, setState }) {
     }));
   };
 
+  const handleDeleteExercise = () => {
+    if (!currentEx) return;
+    if (
+      confirm(
+        `Czy na pewno chcesz usunąć ćwiczenie "${currentEx.name}" ze swojego planu?`,
+      )
+    ) {
+      setState((prev) => {
+        const nextExs = prev.exercises.filter((e) => e.id !== currentEx.id);
+        const remainingInDay = nextExs.filter((e) => e.day === prev.filterDay);
+        return {
+          ...prev,
+          exercises: nextExs,
+          currentEx: remainingInDay.length > 0 ? remainingInDay[0].id : null,
+        };
+      });
+    }
+  };
+
   const getRx = () => {
     if (!currentEx || !currentLogs.length) return null;
     const { weight, reps } = currentLogs[currentLogs.length - 1];
@@ -60,37 +81,37 @@ export default function WorkoutLogger({ state, setState }) {
       if (reps >= upgradeAt)
         return {
           type: "up",
-          tag: "Push for more",
-          text: `Strong! Push for ${reps + 1} reps next time.`,
+          tag: "Więcej",
+          text: `Świetnie! Następnym razem spróbuj ${reps + 1} powtórzeń.`,
         };
       if (reps >= repMin)
         return {
           type: "hold",
-          tag: "Add a rep",
-          text: `In target. Push for ${reps + 1} reps.`,
+          tag: "Dodaj powtórzenie",
+          text: `Jesteś w zakresie celu. Spróbuj ${reps + 1} powtórzeń.`,
         };
       return {
         type: "hold",
-        tag: "Repeat",
-        text: `Fell short. Repeat until you hit ${repMin}+.`,
+        tag: "Powtórz",
+        text: `Nie udało się osiągnąć celu. Powtarzaj, aż dojdziesz do ${repMin}+.`,
       };
     }
     if (reps >= upgradeAt)
       return {
         type: "up",
-        tag: "Add weight",
-        text: `Hit ${reps} reps! Add ${step}${state.units} next time.`,
+        tag: "Dodaj ciężar",
+        text: `Udało się ${reps} powtórzeń! Następnym razem dodaj ${step}${state.units}.`,
       };
     if (reps >= repMin)
       return {
         type: "hold",
-        tag: "Add a rep",
-        text: `${reps} reps. Stay at ${weight}${state.units} & push for ${reps + 1}.`,
+        tag: "Dodaj powtórzenie",
+        text: `${reps} powtórzeń. Zostań przy ${weight}${state.units} i spróbuj ${reps + 1}.`,
       };
     return {
       type: "hold",
-      tag: "Repeat",
-      text: `Fell short. Repeat ${weight}${state.units} until ${repMin}+ clean.`,
+      tag: "Powtórz",
+      text: `Nie udało się osiągnąć celu. Powtarzaj ${weight}${state.units}, aż zrobisz ${repMin}+ poprawnie.`,
     };
   };
 
@@ -103,6 +124,7 @@ export default function WorkoutLogger({ state, setState }) {
         background: "rgba(255,255,255,0.04)",
         backdropFilter: "blur(24px) saturate(1.2)",
         boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+        border: "1px solid rgba(255,255,255,0.05)",
       }}
     >
       <div className="flex items-center gap-2 mb-6 bg-black/40 border border-white/10 p-1.5 rounded-2xl overflow-x-auto">
@@ -119,13 +141,16 @@ export default function WorkoutLogger({ state, setState }) {
         ))}
       </div>
 
-      <div className="flex gap-2.5 mb-8">
+      {/* Zmieniony układ responsywny - na mobilkach przyciski lądują pod selectem */}
+      <div className="flex flex-col sm:flex-row gap-2.5 mb-8">
         <select
-          className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white outline-none focus:border-white/30 appearance-none"
+          className="flex-1 w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white outline-none focus:border-white/30 appearance-none"
           value={state.currentEx || ""}
           onChange={(e) => setState({ ...state, currentEx: e.target.value })}
         >
-          {filteredExercises.length === 0 && <option>No exercises...</option>}
+          {filteredExercises.length === 0 && (
+            <option value="">Brak ćwiczeń...</option>
+          )}
           {filteredExercises.map((e) => (
             <option key={e.id} value={e.id}>
               {e.name} {e.bw ? "(BW)" : ""}
@@ -133,39 +158,52 @@ export default function WorkoutLogger({ state, setState }) {
           ))}
         </select>
 
-        {currentEx && (
+        <div className="flex gap-2.5">
+          {currentEx && (
+            <>
+              <button
+                onClick={() => setChartModalOpen(true)}
+                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-[#6BE3A4] transition-colors"
+                title="Wykres postępów"
+              >
+                <ChartIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setExModalMode("edit")}
+                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
+                title="Edytuj ćwiczenie"
+              >
+                <Pencil className="w-5 h-5" />
+              </button>
+              <button
+                onClick={handleDeleteExercise}
+                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-[#f87171]/20 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 hover:text-[#f87171] transition-colors group"
+                title="Usuń ćwiczenie"
+              >
+                <Trash2 className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" />
+              </button>
+            </>
+          )}
           <button
-            onClick={() => setChartModalOpen(true)}
-            className="w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-[#6ee7b7] transition-colors"
+            onClick={() => setExModalMode("add")}
+            className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
+            title="Dodaj nowe ćwiczenie"
           >
-            <ChartIcon className="w-5 h-5" />
+            <Plus className="w-6 h-6" />
           </button>
-        )}
-        <button
-          onClick={() => setExModalMode("edit")}
-          disabled={!currentEx}
-          className="w-14 h-14 bg-white/5 hover:bg-white/10 disabled:opacity-50 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
-        >
-          <Pencil className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => setExModalMode("add")}
-          className="w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
+        </div>
       </div>
 
       {currentEx && (
         <div className="bg-black/20 border border-white/5 rounded-3xl p-5 mb-6">
           {currentEx.bw ? (
-            <div className="bg-[#6ee7b7]/10 text-[#6ee7b7] text-[12px] font-bold tracking-[0.1em] uppercase text-center p-3 rounded-xl mb-5">
-              Bodyweight — log reps only
+            <div className="bg-[#6BE3A4]/10 text-[#6BE3A4] text-[12px] font-bold tracking-[0.1em] uppercase text-center p-3 rounded-xl mb-5">
+              Ciężar ciała — loguj tylko powtórzenia
             </div>
           ) : (
             <div className="mb-6">
               <div className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1">
-                Weight ({state.units})
+                Obciążenie ({state.units})
               </div>
               <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-2xl h-[60px] p-1.5 shadow-inner">
                 <button
@@ -208,7 +246,7 @@ export default function WorkoutLogger({ state, setState }) {
 
           <div className="mb-6">
             <div className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1">
-              Reps
+              Powtórzenia
             </div>
             <div className="grid grid-cols-5 gap-2">
               {Array.from(
@@ -229,21 +267,21 @@ export default function WorkoutLogger({ state, setState }) {
             onClick={handleLogSet}
             className="w-full h-14 rounded-2xl bg-gradient-to-b from-white to-[#E8E5DD] text-black font-bold text-[15px] shadow-[0_4px_14px_rgba(0,0,0,0.15)] hover:shadow-[0_6px_20px_rgba(255,255,255,0.2)] hover:-translate-y-0.5 active:translate-y-0 transition-all"
           >
-            Log Set
+            Zapisz Serię
           </button>
         </div>
       )}
 
       {rx && (
         <div
-          className={`mt-auto rounded-2xl p-5 border ${rx.type === "up" ? "bg-[#6ee7b7]/10 border-[#6ee7b7]/20" : "bg-white/5 border-white/10"}`}
+          className={`mt-auto rounded-2xl p-5 border ${rx.type === "up" ? "bg-[#6BE3A4]/10 border-[#6BE3A4]/20" : "bg-white/5 border-white/10"}`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/50">
-              Next Session Coach
+              Trener - Następna Seria
             </span>
             <span
-              className={`px-2.5 py-1 rounded-md text-[9px] font-bold tracking-wider uppercase ${rx.type === "up" ? "bg-[#6ee7b7]/20 text-[#6ee7b7]" : "bg-white/10 text-white/70"}`}
+              className={`px-2.5 py-1 rounded-md text-[9px] font-bold tracking-wider uppercase ${rx.type === "up" ? "bg-[#6BE3A4]/20 text-[#6BE3A4]" : "bg-white/10 text-white/70"}`}
             >
               {rx.tag}
             </span>

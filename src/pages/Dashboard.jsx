@@ -62,7 +62,7 @@ export default function Dashboard() {
             className="w-[18px] h-px"
             style={{ background: "var(--text-tertiary)", opacity: 0.6 }}
           />
-          <span>To Do List</span>
+          <span>Lista Zadań</span>
           <span
             className="flex-1 h-px"
             style={{

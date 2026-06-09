@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format, parseISO } from "date-fns";
+import { pl } from "date-fns/locale";
 import { LineChart as ChartIcon } from "lucide-react";
 import {
   Dialog,
@@ -33,7 +34,7 @@ export default function ExerciseProgressDialog({
     if (!logs || logs.length < 2) return [];
     return logs.map((l, i) => ({
       index: i + 1,
-      date: format(parseISO(l.date), "MMM dd"),
+      date: format(parseISO(l.date), "d MMM", { locale: pl }),
       value: ex.bw ? l.reps : estimate1RM(l.weight, l.reps),
     }));
   }, [logs, ex]);
@@ -45,13 +46,13 @@ export default function ExerciseProgressDialog({
       <DialogContent className="bg-[#111113] border-white/10 text-white max-w-lg rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle className="text-xl flex items-center gap-2">
-            <ChartIcon className="w-5 h-5 text-[#6ee7b7]" /> {ex.name} Progress
+            <ChartIcon className="w-5 h-5 text-[#6BE3A4]" /> {ex.name} (Postępy)
           </DialogTitle>
         </DialogHeader>
         {data.length >= 2 ? (
           <div className="h-[250px] w-full mt-4">
             <ChartContainer
-              config={{ value: { color: "#6ee7b7" } }}
+              config={{ value: { color: "#6BE3A4" } }}
               className="h-full w-full"
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -81,8 +82,10 @@ export default function ExerciseProgressDialog({
                   <Line
                     type="monotone"
                     dataKey="value"
-                    name={ex.bw ? "Max Reps" : `Est. 1RM (${units})`}
-                    stroke="#6ee7b7"
+                    name={
+                      ex.bw ? "Maks. powtórzeń" : `Szacowane 1RM (${units})`
+                    }
+                    stroke="#6BE3A4"
                     strokeWidth={3}
                     dot={{ r: 4, fill: "#111113", strokeWidth: 2 }}
                   />
@@ -92,7 +95,7 @@ export default function ExerciseProgressDialog({
           </div>
         ) : (
           <div className="text-center py-12 text-white/40 text-sm bg-white/5 rounded-2xl">
-            Log at least 2 sets to see progress.
+            Zapisz przynajmniej 2 serie, aby zobaczyć wykres postępów.
           </div>
         )}
       </DialogContent>

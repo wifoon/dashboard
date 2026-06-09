@@ -91,9 +91,9 @@ export default function TodayCard({ goals, reload }) {
   const visibleGoals = showAll ? goals : goals.slice(0, 5);
   const hiddenCount = goals.length - 5;
 
-  let label = "no goals yet";
-  if (total > 0 && allDone) label = "all done — solid day";
-  else if (total > 0) label = "complete";
+  let label = "brak celów";
+  if (total > 0 && allDone) label = "wszystko zrobione — świetna robota";
+  else if (total > 0) label = "w trakcie";
 
   return (
     <div
@@ -113,7 +113,7 @@ export default function TodayCard({ goals, reload }) {
             className="text-[10.5px] font-bold uppercase mb-1.5"
             style={{ letterSpacing: "0.18em", color: "var(--text-tertiary)" }}
           >
-            Today — {formatDate(dateStr)}
+            Dzisiaj — {formatDate(dateStr)}
           </p>
           <div className="flex items-baseline gap-1.5">
             <span
@@ -251,7 +251,7 @@ export default function TodayCard({ goals, reload }) {
           className="text-xs italic text-center py-3.5"
           style={{ color: "var(--text-tertiary)" }}
         >
-          No goals for today yet — add one below.
+          Brak zaplanowanych zadań na jutro
         </div>
       ) : (
         <ul className="list-none p-0 m-0">
@@ -289,7 +289,7 @@ export default function TodayCard({ goals, reload }) {
               }}
               onClick={() => setShowAll(true)}
             >
-              Show {hiddenCount} more ▾
+              Pokaż ukryte ({hiddenCount}) ▾
             </li>
           )}
           {showAll && hiddenCount > 0 && (
@@ -301,7 +301,7 @@ export default function TodayCard({ goals, reload }) {
               }}
               onClick={() => setShowAll(false)}
             >
-              Show less ▴
+              Zwiń listę ▴
             </li>
           )}
         </ul>
@@ -317,7 +317,7 @@ export default function TodayCard({ goals, reload }) {
             background: "transparent",
           }}
         >
-          Push remaining to tomorrow →
+          Przenieś nieukończone na jutro →
         </button>
       )}
 

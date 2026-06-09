@@ -7,6 +7,7 @@ export default function FilesPage() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const { session } = useAuth();
+  const [isDragging, setIsDragging] = useState(false);
   const BUCKET_NAME = "pliki";
 
   useEffect(() => {
@@ -22,6 +23,42 @@ export default function FilesPage() {
       setFiles(
         data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
       );
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const fileName = `${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, file, { upsert: false });
+
+      if (error) throw error;
+      fetchFiles();
+    } catch (error) {
+      alert("Błąd podczas wgrywania: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
     }
   };
 
@@ -93,45 +130,98 @@ export default function FilesPage() {
 
   return (
     <div className="w-full max-w-[1100px] mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">
-      <h1
-        className="text-[28px] font-bold tracking-tight mb-8 max-sm:text-[22px]"
-        style={{
-          background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
-          WebkitBackgroundClip: "text",
-          backgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          letterSpacing: "-0.025em",
-        }}
-      >
-        Chmura Plików
-      </h1>
+      {/* 1. ZUNIFIKOWANY NAGŁÓWEK */}
+      <div className="flex items-center justify-between mb-5 shrink-0">
+        <h1
+          className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
+          style={{
+            background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            letterSpacing: "-0.025em",
+          }}
+        >
+          Dysk
+        </h1>
+      </div>
 
-      {/* Strefa upuszczania / Wyboru pliku */}
+      {/* 2. ZUNIFIKOWANY SEPARATOR */}
       <div
-        className="rounded-3xl p-8 mb-8 border border-dashed border-white/20 hover:bg-white/[0.02] transition-colors flex flex-col items-center justify-center text-center relative"
+        className="flex items-center gap-3 mb-5"
         style={{
-          background: "rgba(255,255,255,0.02)",
-          backdropFilter: "blur(24px)",
+          fontSize: "10.5px",
+          fontWeight: 700,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--text-tertiary)",
         }}
       >
-        <UploadCloud className="w-12 h-12 text-[#6ee7b7] mb-4 opacity-80" />
+        <span
+          className="w-[18px] h-px"
+          style={{ background: "var(--text-tertiary)", opacity: 0.6 }}
+        />
+        <span>Wgrywanie Plików</span>
+        <span
+          className="flex-1 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
+      </div>
+
+      {/* 3. KARTA W STYLU DASHBOARDU */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`rounded-3xl p-8 mb-8 flex flex-col items-center justify-center text-center relative transition-all duration-300 ${
+          isDragging ? "bg-white/[0.08] border-[#6BE3A4]/50 scale-[1.02]" : ""
+        }`}
+        style={{
+          background: isDragging
+            ? "rgba(255,255,255,0.08)"
+            : "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(24px) saturate(1.2)",
+          boxShadow: isDragging
+            ? "0 0 30px rgba(107,227,164,0.15)"
+            : "0 12px 40px rgba(0,0,0,0.45)",
+          border: `1px ${isDragging ? "dashed" : "solid"} ${
+            isDragging ? "#6BE3A4" : "rgba(255,255,255,0.05)"
+          }`,
+        }}
+      >
+        <UploadCloud className="w-12 h-12 text-[#6BE3A4] mb-4 opacity-80" />
         <h3 className="text-lg font-bold text-white mb-2">Wyślij nowy plik</h3>
         <p className="text-sm text-white/50 mb-6 max-w-sm">
           Wrzuć dokumenty, skrypty lub zdjęcia. Pliki są szyfrowane i dostępne
           tylko dla Ciebie.
         </p>
 
-        <label className="bg-white text-black px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-gray-200 transition-all active:scale-95 flex items-center gap-2 shadow-[0_4px_14px_rgba(255,255,255,0.15)]">
+        {/* 4. GŁÓWNY PRZYCISK Z DASHBOARDU */}
+        <label
+          className="px-6 py-[11px] rounded-xl text-[13px] font-bold cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
+          style={{
+            background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+            color: "#0A0A0B",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
+          }}
+        >
           {uploading ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <UploadCloud className="w-5 h-5" />
+            <UploadCloud className="w-4 h-4" />
           )}
           {uploading ? "Wgrywanie..." : "Wybierz plik z dysku"}
           <input
             type="file"
             className="hidden"
-            onChange={uploadFile}
+            onChange={(e) => {
+              handleFileUpload(e.target.files[0]);
+              e.target.value = null;
+            }}
             disabled={uploading}
           />
         </label>
@@ -139,8 +229,28 @@ export default function FilesPage() {
 
       {/* Lista plików */}
       <div className="space-y-3">
-        <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40 mb-4 ml-1">
-          Twoje pliki ({files.length})
+        <div
+          className="flex items-center gap-3 mb-5"
+          style={{
+            fontSize: "10.5px",
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "var(--text-tertiary)",
+          }}
+        >
+          <span
+            className="w-[18px] h-px"
+            style={{ background: "var(--text-tertiary)", opacity: 0.6 }}
+          />
+          <span>Twoje Pliki ({files.length})</span>
+          <span
+            className="flex-1 h-px"
+            style={{
+              background:
+                "linear-gradient(90deg, rgba(255,255,255,0.08), transparent)",
+            }}
+          />
         </div>
 
         {files.length === 0 && !uploading && (

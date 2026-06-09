@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/AuthContext";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,9 +14,9 @@ export default function LoginPage() {
     setErrorMsg("");
 
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (error) {
-      setErrorMsg("Nieprawidłowy e-mail lub hasło.");
+      setErrorMsg("Nieprawidłowy login lub hasło.");
     } finally {
       setLoading(false);
     }
@@ -57,12 +57,13 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <input
-              type="email"
-              placeholder="Adres e-mail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-4 py-3.5 bg-white/[0.03] border border-white/10 rounded-2xl focus:outline-none focus:border-white/30 focus:bg-white/[0.05] transition-all placeholder:text-white/30 text-sm"
+              type="text"
+              placeholder="Nazwa użytkownika"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoFocus
+              className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-3 text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all"
             />
           </div>
           <div>
@@ -85,7 +86,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full mt-2 py-3.5 font-semibold text-[#0a0a0b] bg-white rounded-2xl hover:bg-gray-200 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            {loading ? "Weryfikacja..." : "Wejdź do systemu"}
+            {loading ? "Weryfikacja..." : "Zaloguj się"}
           </button>
         </form>
       </div>

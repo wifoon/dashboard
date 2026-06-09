@@ -35,13 +35,32 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
-    return data;
+  const login = async (usernameInput, password) => {
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("username", usernameInput.trim())
+        .single();
+
+      if (profileError || !profile) {
+        throw new Error("Nieprawidłowy login lub hasło");
+      }
+
+      // 2. Skoro mamy e-mail, logujemy się standardową funkcją Supabase
+      const { data, error: authError } = await supabase.auth.signInWithPassword(
+        {
+          email: profile.email,
+          password: password,
+        },
+      );
+
+      if (authError) throw authError;
+      return data;
+    } catch (error) {
+      console.error("Błąd autoryzacji:", error.message);
+      throw error;
+    }
   };
 
   const logout = async () => {

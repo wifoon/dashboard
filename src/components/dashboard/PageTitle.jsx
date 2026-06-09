@@ -11,7 +11,7 @@ export default function PageTitle() {
           letterSpacing: "-0.025em",
         }}
       >
-        My Dashboard
+        Dashboard
       </h1>
     </div>
   );

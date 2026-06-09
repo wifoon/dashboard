@@ -68,10 +68,10 @@ export default function TomorrowCard({ goals, reload }) {
             className="text-[10.5px] font-bold uppercase mb-1"
             style={{ letterSpacing: "0.18em", color: "var(--text-tertiary)" }}
           >
-            Plan tomorrow — {formatDate(dateStr)}
+            Plan na jutro — {formatDate(dateStr)}
           </p>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-            Write tonight, locked until 6 AM.
+            Zapisz dziś, karta zablokowana do 6:00 rano.
           </p>
         </div>
         <span
@@ -82,7 +82,7 @@ export default function TomorrowCard({ goals, reload }) {
             color: "var(--text-tertiary)",
           }}
         >
-          {total} planned
+          {total} zaplanowane
         </span>
       </div>
 
@@ -135,7 +135,7 @@ export default function TomorrowCard({ goals, reload }) {
           className="text-xs italic text-center py-3.5"
           style={{ color: "var(--text-tertiary)" }}
         >
-          Nothing planned for tomorrow yet
+          Brak zaplanowanych zadań na jutro
         </div>
       ) : (
         <ul className="list-none p-0 m-0">
@@ -173,7 +173,7 @@ export default function TomorrowCard({ goals, reload }) {
               }}
               onClick={() => setShowAll(true)}
             >
-              Show {hiddenCount} more ▾
+              Pokaż {hiddenCount} więcej ▾
             </li>
           )}
           {showAll && hiddenCount > 0 && (
@@ -185,7 +185,7 @@ export default function TomorrowCard({ goals, reload }) {
               }}
               onClick={() => setShowAll(false)}
             >
-              Show less ▴
+              Zwiń ▴
             </li>
           )}
         </ul>

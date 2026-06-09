@@ -173,20 +173,17 @@
 }
 
 @keyframes priority-glow {
-  0% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
-    border-top-color: rgba(239, 68, 68, 0.8);
-  }
-  50% {
-    box-shadow: 0 -4px 20px 0 rgba(239, 68, 68, 0.15);
-    border-top-color: rgba(239, 68, 68, 1);
-  }
+  0%,
   100% {
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-    border-top-color: rgba(239, 68, 68, 0.8);
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 20px -5px rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
   }
 }
 
 .note-priority {
-  animation: priority-glow 3s infinite ease-in-out;
+  animation: priority-glow 4s ease-in-out infinite;
 }

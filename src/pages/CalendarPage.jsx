@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   format,
   startOfMonth,
@@ -10,7 +10,11 @@ import {
   subMonths,
   startOfWeek,
   endOfWeek,
+  isSameDay,
 } from "date-fns";
+import { pl } from "date-fns/locale";
+import { motion } from "framer-motion";
+import useEmblaCarousel from "embla-carousel-react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,14 +25,30 @@ import {
   Settings,
   Trash2,
   Clock,
+  Edit3,
 } from "lucide-react";
+
 import { getCalData, saveCalData } from "@/lib/calendarStorage";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const PALETTE = [
   "#ef4444",
@@ -41,13 +61,68 @@ const PALETTE = [
   "#f2c063",
 ];
 
+// --- Zbudowany z Shadcn Time Picker ---
+const ShadcnTimePicker = ({ value, onChange }) => {
+  const [h, m] = (value || "12:00").split(":");
+
+  const hours = Array.from({ length: 24 }, (_, i) =>
+    i.toString().padStart(2, "0"),
+  );
+  const minutes = Array.from({ length: 12 }, (_, i) =>
+    (i * 5).toString().padStart(2, "0"),
+  );
+
+  return (
+    <div className="flex items-center gap-2">
+      <Select value={h} onValueChange={(newH) => onChange(`${newH}:${m}`)}>
+        <SelectTrigger className="w-full h-12 bg-black/40 border-white/10 text-white rounded-xl focus:ring-[#6BE3A4] outline-none shadow-none text-base">
+          <SelectValue placeholder="Godzina" />
+        </SelectTrigger>
+        <SelectContent className="bg-[#111113] border-white/10 text-white max-h-[200px] rounded-xl">
+          {hours.map((hour) => (
+            <SelectItem
+              key={hour}
+              value={hour}
+              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg"
+            >
+              {hour}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <span className="text-white/30 font-bold text-lg pb-1">:</span>
+
+      <Select value={m} onValueChange={(newM) => onChange(`${h}:${newM}`)}>
+        <SelectTrigger className="w-full h-12 bg-black/40 border-white/10 text-white rounded-xl focus:ring-[#6BE3A4] outline-none shadow-none text-base">
+          <SelectValue placeholder="Minuta" />
+        </SelectTrigger>
+        <SelectContent className="bg-[#111113] border-white/10 text-white max-h-[200px] rounded-xl">
+          {minutes.map((minute) => (
+            <SelectItem
+              key={minute}
+              value={minute}
+              className="focus:bg-white/10 focus:text-white cursor-pointer rounded-lg"
+            >
+              {minute}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
+
 export default function CalendarPage() {
+  const isMobile = useIsMobile();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState(new Date());
   const [data, setData] = useState({ events: [], tags: [] });
 
-  const [selectedDay, setSelectedDay] = useState(null);
-  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [addEventOpen, setAddEventOpen] = useState(false);
   const [tagsModalOpen, setTagsModalOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
 
   const [newEvent, setNewEvent] = useState({
     time: "12:00",
@@ -55,6 +130,12 @@ export default function CalendarPage() {
     tagId: "",
   });
   const [newTag, setNewTag] = useState({ name: "", color: PALETTE[0] });
+
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: "center",
+    dragFree: true,
+    containScroll: "trimSnaps",
+  });
 
   useEffect(() => {
     setData(getCalData());
@@ -67,20 +148,53 @@ export default function CalendarPage() {
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
+
   const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const scrollToSelected = useCallback(() => {
+    if (!emblaApi) return;
+    const index = daysInMonth.findIndex((d) => isSameDay(d, selectedDay));
+    if (index !== -1) emblaApi.scrollTo(index);
+  }, [emblaApi, daysInMonth, selectedDay]);
+
+  useEffect(() => {
+    scrollToSelected();
+  }, [scrollToSelected]);
+
+  const selectedDayEvents = data.events
+    .filter((e) => e.date === format(selectedDay, "yyyy-MM-dd"))
+    .sort((a, b) => a.time.localeCompare(b.time));
 
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return;
-    const ev = {
-      id: "ev_" + Date.now(),
-      date: format(selectedDay, "yyyy-MM-dd"),
-      time: newEvent.time,
-      title: newEvent.title.trim(),
-      tagId: newEvent.tagId || (data.tags.length > 0 ? data.tags[0].id : null),
-    };
-    saveCalData({ ...data, events: [...data.events, ev] });
+
+    if (editingEventId) {
+      const updatedEvents = data.events.map((e) =>
+        e.id === editingEventId
+          ? {
+              ...e,
+              time: newEvent.time,
+              title: newEvent.title.trim(),
+              tagId: newEvent.tagId || null,
+            }
+          : e,
+      );
+      saveCalData({ ...data, events: updatedEvents });
+    } else {
+      const ev = {
+        id: "ev_" + Date.now(),
+        date: format(selectedDay, "yyyy-MM-dd"),
+        time: newEvent.time,
+        title: newEvent.title.trim(),
+        tagId:
+          newEvent.tagId || (data.tags.length > 0 ? data.tags[0].id : null),
+      };
+      saveCalData({ ...data, events: [...data.events, ev] });
+    }
+
     setNewEvent({ time: "12:00", title: "", tagId: "" });
-    setEventModalOpen(false);
+    setEditingEventId(null);
+    setAddEventOpen(false);
   };
 
   const handleDeleteEvent = (id) => {
@@ -111,350 +225,500 @@ export default function CalendarPage() {
     });
   };
 
+  const openAddForm = (day) => {
+    setSelectedDay(day);
+    setEditingEventId(null);
+    setNewEvent({ time: "12:00", title: "", tagId: data.tags[0]?.id || "" });
+    setAddEventOpen(true);
+  };
+
+  const openEditForm = (ev) => {
+    setEditingEventId(ev.id);
+    setNewEvent({ time: ev.time, title: ev.title, tagId: ev.tagId || "" });
+    setAddEventOpen(true);
+  };
+
+  const openEditFormFromDesktopGrid = (ev, day) => {
+    setSelectedDay(day);
+    setEditingEventId(ev.id);
+    setNewEvent({ time: ev.time, title: ev.title, tagId: ev.tagId || "" });
+    setDetailsModalOpen(true);
+    setAddEventOpen(true);
+  };
+
+  const EventFormContent = () => (
+    <div className="space-y-6 pt-2">
+      <div className="space-y-4">
+        <div>
+          <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
+            Tytuł wydarzenia
+          </div>
+          <input
+            type="text"
+            placeholder="Podaj wydarzenie..."
+            value={newEvent.title}
+            onChange={(e) =>
+              setNewEvent({ ...newEvent, title: e.target.value })
+            }
+            className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-white/30 transition-colors"
+            autoFocus={!isMobile}
+          />
+        </div>
+
+        <div>
+          <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
+            Godzina
+          </div>
+          <ShadcnTimePicker
+            value={newEvent.time}
+            onChange={(val) => setNewEvent({ ...newEvent, time: val })}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
+          Kategoria (Tag)
+        </div>
+        <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto custom-scrollbar bg-black/20 p-2 rounded-2xl border border-white/5">
+          <button
+            onClick={() => setNewEvent({ ...newEvent, tagId: "" })}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${!newEvent.tagId ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
+          >
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20" />
+            <span
+              className={`text-[13px] font-bold tracking-wide ${!newEvent.tagId ? "text-white" : "text-white/50"}`}
+            >
+              Brak kategorii
+            </span>
+          </button>
+          {data.tags.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setNewEvent({ ...newEvent, tagId: t.id })}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${newEvent.tagId === t.id ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
+            >
+              <div
+                className="w-3.5 h-3.5 rounded-full ring-2 ring-white/10"
+                style={{
+                  backgroundColor: t.color,
+                  boxShadow:
+                    newEvent.tagId === t.id ? `0 0 12px ${t.color}` : "none",
+                }}
+              />
+              <span
+                className={`text-[13px] font-bold tracking-wide ${newEvent.tagId === t.id ? "text-white" : "text-white/50"}`}
+              >
+                {t.name}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3 pt-5 border-t border-white/10">
+        <button
+          onClick={() => {
+            setAddEventOpen(false);
+            setEditingEventId(null);
+          }}
+          className="flex-1 h-12 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-bold transition-colors"
+        >
+          Anuluj
+        </button>
+        <button
+          onClick={handleAddEvent}
+          className="flex-1 h-12 rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+          style={{
+            background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+            color: "#0A0A0B",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
+          }}
+        >
+          Zapisz
+        </button>
+      </div>
+    </div>
+  );
+
+  const AgendaList = ({ events }) => (
+    <div className="flex flex-col gap-3">
+      {events.length === 0 ? (
+        <div className="text-center py-16 text-white/30 text-sm border border-dashed border-white/10 rounded-3xl bg-black/20">
+          Brak wydarzeń.
+        </div>
+      ) : (
+        events.map((ev) => {
+          const tag = data.tags.find((t) => t.id === ev.tagId);
+          return (
+            <div
+              key={ev.id}
+              onClick={() => openEditForm(ev)}
+              className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/5 cursor-pointer"
+            >
+              <div
+                className="flex items-center gap-1.5 text-sm font-bold font-mono px-3 py-1.5 rounded-xl shadow-inner shrink-0"
+                style={{
+                  backgroundColor: tag
+                    ? `${tag.color}15`
+                    : "rgba(255,255,255,0.05)",
+                  color: tag ? tag.color : "#fff",
+                }}
+              >
+                <Clock className="w-3.5 h-3.5 opacity-70" /> {ev.time}
+              </div>
+              <div className="flex-1 font-semibold text-[15px]">{ev.title}</div>
+              {tag && (
+                <div
+                  className="flex items-center px-2.5 py-1 rounded-md shrink-0 hidden sm:flex border"
+                  style={{
+                    backgroundColor: `${tag.color}15`,
+                    borderColor: `${tag.color}30`,
+                    borderLeft: `3px solid ${tag.color}`,
+                  }}
+                >
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: tag.color }}
+                  >
+                    {tag.name}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteEvent(ev.id);
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-white/30 hover:text-[#ff6b6b] hover:bg-[#ff6b6b]/10 transition-colors"
+                title="Usuń"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   return (
-    <div className="w-full max-w-[1200px] mx-auto pt-[max(16px,env(safe-area-inset-top))] px-3 md:px-5 pb-32 relative z-10">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 md:mb-8">
+    <div className="w-full max-w-[1200px] mx-auto pt-[max(16px,env(safe-area-inset-top))] px-3 md:px-5 pb-32 md:pb-0 relative z-10 md:h-[calc(100vh-140px)] flex flex-col">
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-5 shrink-0">
         <h1
-          className="text-[22px] md:text-[28px] font-bold tracking-tight flex items-center gap-2 md:gap-3 m-0"
+          className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
           style={{
             background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
             WebkitBackgroundClip: "text",
-            backgroundClip: "text",
             WebkitTextFillColor: "transparent",
             letterSpacing: "-0.025em",
           }}
         >
-          <CalIcon className="w-6 h-6 md:w-8 md:h-8 text-[#6ee7b7]" /> Kalendarz
+          Kalendarz
         </h1>
         <button
           onClick={() => setTagsModalOpen(true)}
-          className="w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-white/60 transition-colors shadow-sm"
+          className="w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-white/60 transition-colors"
         >
           <Settings className="w-5 h-5" />
         </button>
       </div>
 
-      <div
-        className="rounded-2xl md:rounded-[32px] p-3 md:p-6 lg:p-8"
-        style={{
-          background: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(24px) saturate(1.2)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-          border: "1px solid rgba(255,255,255,0.05)",
-        }}
-      >
-        {/* Nawigacja Miesiąca */}
-        <div className="flex items-center justify-between mb-4 md:mb-8">
-          <div className="text-lg md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">
-            {format(currentDate, "MMMM yyyy")}
+      {/* GŁÓWNY KONTENER KALENDARZA */}
+      <div className="rounded-[32px] md:p-6 md:bg-white/[0.04] md:backdrop-blur-xl md:shadow-[0_12px_40px_rgba(0,0,0,0.45)] md:border md:border-white/5 flex-1 flex flex-col min-h-0">
+        {/* NAWIGACJA MIESIĄCA */}
+        <div className="flex items-center justify-between mb-4 md:mb-6 px-2 md:px-0 shrink-0">
+          <div className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">
+            {format(currentDate, "MMMM yyyy", { locale: pl })}
           </div>
-          <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-[14px] md:rounded-2xl p-1 md:p-1.5 shadow-inner">
+          <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-2xl p-1.5 shadow-inner">
             <button
               onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-              className="p-1.5 md:p-2 hover:bg-white/10 rounded-lg md:rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
+              className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
             >
-              <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
+              <ChevronLeft className="w-5 h-5" />
             </button>
             <button
-              onClick={() => setCurrentDate(new Date())}
-              className="px-3 md:px-4 py-1.5 md:py-2 hover:bg-white/10 rounded-lg md:rounded-xl text-[11px] md:text-[13px] font-bold text-white/70 hover:text-white transition-all"
+              onClick={() => {
+                const today = new Date();
+                setCurrentDate(today);
+                setSelectedDay(today);
+              }}
+              className="px-4 py-2 hover:bg-white/10 rounded-xl text-[13px] font-bold text-white/70 hover:text-white transition-all"
             >
               DZIŚ
             </button>
             <button
               onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-              className="p-1.5 md:p-2 hover:bg-white/10 rounded-lg md:rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
+              className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
             >
-              <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
+              <ChevronRight className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Siatka Kalendarza */}
-        <div className="grid grid-cols-7 gap-1 md:gap-3 lg:gap-4">
-          {["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"].map((d) => (
-            <div
-              key={d}
-              className="text-center text-[10px] md:text-[13px] font-bold text-white/40 uppercase tracking-widest mb-1 md:mb-3"
-            >
-              {d}
-            </div>
-          ))}
+        {/* =========================================
+            WIDOK MOBILE
+            ========================================= */}
+        <div className="block md:hidden">
+          <div className="overflow-hidden -mx-3 px-3 mb-6" ref={emblaRef}>
+            <div className="flex gap-2">
+              {daysInMonth.map((day) => {
+                const isSelected = isSameDay(day, selectedDay);
+                const isTodayDate = isToday(day);
+                const dayEventsCount = data.events.filter(
+                  (e) => e.date === format(day, "yyyy-MM-dd"),
+                ).length;
 
-          {daysInMonth.map((day) => {
-            const dateStr = format(day, "yyyy-MM-dd");
-            const dayEvents = data.events
-              .filter((e) => e.date === dateStr)
-              .sort((a, b) => a.time.localeCompare(b.time));
-            const isCurrentMonth = isSameMonth(day, monthStart);
-            const isTodayDate = isToday(day);
-
-            return (
-              <div
-                key={dateStr}
-                onClick={() => {
-                  setSelectedDay(day);
-                  setNewEvent({ ...newEvent, tagId: data.tags[0]?.id || "" });
-                }}
-                className={`flex flex-col min-h-[60px] md:min-h-[100px] p-1 md:p-3 lg:p-4 rounded-xl md:rounded-2xl cursor-pointer transition-all border relative overflow-hidden group
-                  ${
-                    isTodayDate
-                      ? "bg-[#6ee7b7]/10 border-[#6ee7b7]/30 shadow-[0_0_20px_rgba(110,231,183,0.15)] ring-1 ring-[#6ee7b7]/50"
-                      : isCurrentMonth
-                        ? "bg-black/20 border-white/5 hover:bg-white/[0.08] hover:border-white/20"
-                        : "bg-transparent border-transparent opacity-30 pointer-events-none"
-                  }
-                `}
-              >
-                {/* Numer dnia */}
-                <div
-                  className={`text-[11px] md:text-sm font-bold flex justify-center md:justify-between items-center ${isTodayDate ? "text-[#6ee7b7]" : "text-white/70 group-hover:text-white"}`}
-                >
-                  <span
-                    className={
-                      isTodayDate
-                        ? "bg-[#6ee7b7] text-black w-5 h-5 md:w-7 md:h-7 flex items-center justify-center rounded-full shadow-lg"
-                        : ""
-                    }
+                return (
+                  <div
+                    key={day.toString()}
+                    onClick={() => setSelectedDay(day)}
+                    className="relative flex-[0_0_18%] min-w-[64px] h-[80px] flex flex-col items-center justify-center rounded-2xl cursor-pointer select-none"
                   >
-                    {format(day, "d")}
-                  </span>
-                </div>
-
-                {/* Widok Mobile: Kolorowe Kropki */}
-                <div className="flex md:hidden flex-wrap gap-1 mt-1 md:mt-2 justify-center items-center w-full">
-                  {dayEvents.slice(0, 4).map((ev) => {
-                    const tag = data.tags.find((t) => t.id === ev.tagId);
-                    return (
-                      <div
-                        key={ev.id}
-                        className="w-1.5 h-1.5 rounded-full shadow-sm"
-                        style={{ backgroundColor: tag?.color || "#fff" }}
-                      />
-                    );
-                  })}
-                  {dayEvents.length > 4 && (
-                    <span className="text-[8px] text-white/50 leading-none">
-                      +{dayEvents.length - 4}
-                    </span>
-                  )}
-                </div>
-
-                {/* Widok Desktop: Pigułki Wydarzeń */}
-                <div className="hidden md:flex flex-col gap-1 overflow-y-auto flex-1 mt-2 custom-scrollbar pr-1">
-                  {dayEvents.map((ev) => {
-                    const tag = data.tags.find((t) => t.id === ev.tagId);
-                    return (
-                      <div
-                        key={ev.id}
-                        className="text-[10px] lg:text-[11px] truncate px-1.5 py-1 rounded-md flex items-center gap-1.5 font-semibold transition-transform hover:scale-[1.02]"
-                        style={{
-                          backgroundColor: tag
-                            ? `${tag.color}25`
-                            : "rgba(255,255,255,0.08)",
-                          color: tag ? tag.color : "rgba(255,255,255,0.9)",
-                          borderLeft: `2px solid ${tag ? tag.color : "rgba(255,255,255,0.3)"}`,
+                    {isSelected && (
+                      <motion.div
+                        layoutId="active-day-mobile"
+                        className="absolute inset-0 bg-white/10 border border-white/30 rounded-2xl"
+                        transition={{
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 30,
                         }}
-                      >
-                        <span className="opacity-70 font-mono text-[9px] tracking-tight">
-                          {ev.time}
-                        </span>
-                        {ev.title}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+                      />
+                    )}
+
+                    <span
+                      className={`text-[11px] font-bold uppercase z-10 ${isSelected ? "text-white" : "text-white/50"}`}
+                    >
+                      {format(day, "EEE", { locale: pl })}
+                    </span>
+                    <span
+                      className={`text-[22px] font-black z-10 ${isSelected ? "text-white" : isTodayDate ? "text-white" : "text-white/90"}`}
+                    >
+                      {format(day, "d")}
+                    </span>
+
+                    <div className="h-1.5 mt-1 z-10 flex gap-1">
+                      {dayEventsCount > 0 && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mb-6 px-1">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-white/50 tracking-widest uppercase">
+                Plan na {format(selectedDay, "d MMMM", { locale: pl })}
+              </h2>
+            </div>
+            <AgendaList events={selectedDayEvents} />
+          </div>
+
+          <button
+            onClick={() => {
+              openAddForm(selectedDay);
+            }}
+            className="w-full py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+            style={{
+              background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+              color: "#0A0A0B",
+            }}
+          >
+            <Plus className="w-4 h-4" /> Dodaj Wydarzenie
+          </button>
         </div>
-      </div>
 
-      {/* Modal Szczegółów Dnia */}
-      <Dialog
-        open={!!selectedDay}
-        onOpenChange={(o) => {
-          if (!o) {
-            setSelectedDay(null);
-            setEventModalOpen(false);
-          }
-        }}
-      >
-        <DialogContent className="bg-[#111113]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.6)] text-white w-[95%] max-w-lg rounded-3xl p-5 md:p-8">
-          <DialogHeader className="mb-4 md:mb-6 border-b border-white/10 pb-4">
-            <DialogTitle className="text-xl md:text-2xl font-extrabold flex items-center gap-3">
-              <CalIcon className="w-5 h-5 md:w-6 md:h-6 text-[#6ee7b7]" />{" "}
-              {selectedDay && format(selectedDay, "EEEE, dd MMMM")}
-            </DialogTitle>
-          </DialogHeader>
+        {/* =========================================
+            WIDOK DESKTOP
+            ========================================= */}
+        <div className="hidden md:flex flex-col flex-1 min-h-0">
+          <div className="grid grid-cols-7 gap-2 mb-2 shrink-0">
+            {["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"].map((d) => (
+              <div
+                key={d}
+                className="text-center text-[12px] font-bold text-white/30 uppercase tracking-widest"
+              >
+                {d}
+              </div>
+            ))}
+          </div>
 
-          {!eventModalOpen ? (
-            <div className="space-y-4 md:space-y-6">
-              <div className="flex flex-col gap-3 min-h-[150px] max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {selectedDay &&
-                  data.events
-                    .filter((e) => e.date === format(selectedDay, "yyyy-MM-dd"))
-                    .sort((a, b) => a.time.localeCompare(b.time))
-                    .map((ev) => {
+          <div className="grid grid-cols-7 gap-2 flex-1 min-h-0 auto-rows-fr">
+            {daysInMonth.map((day) => {
+              const dateStr = format(day, "yyyy-MM-dd");
+              const dayEvents = data.events
+                .filter((e) => e.date === dateStr)
+                .sort((a, b) => a.time.localeCompare(b.time));
+              const isCurrentMonth = isSameMonth(day, monthStart);
+              const isTodayDate = isToday(day);
+
+              return (
+                <div
+                  key={dateStr}
+                  onClick={() => {
+                    setSelectedDay(day);
+                    setDetailsModalOpen(true);
+                  }}
+                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative overflow-hidden min-h-0
+                    ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06] transition-colors" : "bg-transparent border-transparent opacity-10 pointer-events-none"}
+                  `}
+                >
+                  <div
+                    className={`text-[12px] font-bold flex justify-between items-center shrink-0 ${isTodayDate ? "text-black" : "text-white/60"}`}
+                  >
+                    <span
+                      className={
+                        isTodayDate
+                          ? "bg-white text-black w-7 h-7 flex items-center justify-center rounded-full font-black"
+                          : ""
+                      }
+                    >
+                      {format(day, "d")}
+                    </span>
+                  </div>
+
+                  {/* KAFELKI WYDARZEŃ */}
+                  <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 custom-scrollbar pr-0.5 max-h-[calc(100%-28px)]">
+                    {dayEvents.map((ev) => {
                       const tag = data.tags.find((t) => t.id === ev.tagId);
                       return (
                         <div
                           key={ev.id}
-                          className="flex items-center gap-3 md:gap-4 bg-white/[0.03] p-3 md:p-4 rounded-2xl border border-white/5 hover:bg-white/[0.06] transition-colors group"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditFormFromDesktopGrid(ev, day);
+                          }}
+                          className="pl-2 pr-1.5 py-1.5 rounded-lg flex flex-col shadow-sm border cursor-pointer"
+                          style={{
+                            backgroundColor: tag
+                              ? `${tag.color}15`
+                              : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${tag ? `${tag.color}30` : "rgba(255,255,255,0.08)"}`,
+                            borderLeft: `3px solid ${tag ? tag.color : "rgba(255,255,255,0.3)"}`,
+                          }}
                         >
-                          <div
-                            className="flex items-center gap-1.5 text-xs md:text-sm font-bold font-mono px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl shadow-inner"
+                          <span
+                            className="font-mono text-[10px] font-bold tracking-wide mb-[1px]"
                             style={{
-                              backgroundColor: tag
-                                ? `${tag.color}15`
-                                : "rgba(255,255,255,0.05)",
-                              color: tag ? tag.color : "#fff",
+                              color: tag ? tag.color : "rgba(255,255,255,0.7)",
                             }}
                           >
-                            <Clock className="w-3 h-3 md:w-3.5 md:h-3.5 opacity-70" />{" "}
                             {ev.time}
-                          </div>
-                          <div className="flex-1 font-semibold text-sm md:text-[15px]">
-                            {ev.title}
-                          </div>
-                          {tag && (
-                            <div className="flex items-center gap-1.5 md:gap-2 px-2 py-1 rounded-md bg-black/40 border border-white/5">
-                              <div
-                                className="w-2 h-2 rounded-full"
-                                style={{
-                                  backgroundColor: tag.color,
-                                  boxShadow: `0 0 8px ${tag.color}80`,
-                                }}
-                                title={tag.name}
-                              />
-                              <span
-                                className="hidden sm:inline text-[9px] md:text-[10px] font-bold uppercase tracking-wider"
-                                style={{ color: tag.color }}
-                              >
-                                {tag.name}
-                              </span>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => handleDeleteEvent(ev.id)}
-                            className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-lg md:rounded-xl text-white/20 hover:text-[#ff6b6b] hover:bg-[#ff6b6b]/10 transition-colors md:opacity-0 group-hover:opacity-100"
+                          </span>
+                          <span
+                            className="text-[11.5px] font-semibold leading-tight line-clamp-2"
+                            style={{ color: "rgba(255,255,255,0.95)" }}
                           >
-                            <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
-                          </button>
+                            {ev.title}
+                          </span>
                         </div>
                       );
                     })}
-                {selectedDay &&
-                  data.events.filter(
-                    (e) => e.date === format(selectedDay, "yyyy-MM-dd"),
-                  ).length === 0 && (
-                    <div className="text-center py-12 md:py-16 text-white/30 text-sm border border-dashed border-white/10 rounded-3xl bg-black/20">
-                      Brak wydarzeń. Czysta karta!
-                    </div>
-                  )}
-              </div>
-              <button
-                onClick={() => setEventModalOpen(true)}
-                className="w-full h-12 md:h-14 bg-white hover:bg-gray-200 text-black rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4 md:w-5 md:h-5" /> Dodaj Nowe Wydarzenie
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4 md:space-y-6 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex gap-3 md:gap-4">
-                <div className="w-1/3">
-                  <div className="text-[10px] md:text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-1.5 md:mb-2 ml-1">
-                    Godzina
                   </div>
-                  <input
-                    type="time"
-                    value={newEvent.time}
-                    onChange={(e) =>
-                      setNewEvent({ ...newEvent, time: e.target.value })
-                    }
-                    className="w-full h-12 md:h-14 bg-black/40 border border-white/10 rounded-xl md:rounded-2xl px-2 md:px-4 text-sm md:text-base font-bold text-white outline-none focus:border-[#6ee7b7]/50 transition-colors"
-                    style={{ colorScheme: "dark" }}
-                  />
                 </div>
-                <div className="w-2/3">
-                  <div className="text-[10px] md:text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-1.5 md:mb-2 ml-1">
-                    Nazwa
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Trening..."
-                    value={newEvent.title}
-                    onChange={(e) =>
-                      setNewEvent({ ...newEvent, title: e.target.value })
-                    }
-                    className="w-full h-12 md:h-14 bg-black/40 border border-white/10 rounded-xl md:rounded-2xl px-3 md:px-4 text-sm md:text-base text-white outline-none focus:border-[#6ee7b7]/50 transition-colors"
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] md:text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-1.5 md:mb-2 ml-1">
-                  Przypisz Kategorię
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setNewEvent({ ...newEvent, tagId: "" })}
-                    className={`h-10 md:h-12 border rounded-lg md:rounded-xl text-xs md:text-sm font-bold flex items-center justify-center gap-2 transition-all ${!newEvent.tagId ? "bg-white text-black border-white shadow-md" : "bg-black/40 border-white/10 text-white/50 hover:bg-white/5"}`}
-                  >
-                    Brak tagu
-                  </button>
-                  {data.tags.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setNewEvent({ ...newEvent, tagId: t.id })}
-                      className={`h-10 md:h-12 border rounded-lg md:rounded-xl text-xs md:text-sm font-bold flex items-center justify-center gap-2 transition-all ${newEvent.tagId === t.id ? "bg-white/10 border-white/30 text-white shadow-md" : "bg-black/40 border-white/10 text-white/50 hover:bg-white/5"}`}
-                    >
-                      <div
-                        className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full"
-                        style={{
-                          backgroundColor: t.color,
-                          boxShadow: `0 0 8px ${t.color}80`,
-                        }}
-                      />
-                      <span className="truncate max-w-[80px] md:max-w-none">
-                        {t.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-2 md:gap-3 pt-4 border-t border-white/10">
-                <button
-                  onClick={() => setEventModalOpen(false)}
-                  className="flex-1 h-12 md:h-14 bg-white/5 hover:bg-white/10 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-colors"
-                >
-                  Anuluj
-                </button>
-                <button
-                  onClick={handleAddEvent}
-                  className="flex-[2] h-12 md:h-14 bg-white text-black rounded-xl md:rounded-2xl text-xs md:text-sm font-bold shadow-lg transition-all hover:bg-gray-200 active:scale-[0.98]"
-                >
-                  Zapisz
-                </button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
-      {/* Modal Zarządzania Tagami */}
+      {/* =========================================
+          MODALE I SZUFLADY
+          ========================================= */}
+
+      <Drawer open={addEventOpen && isMobile} onOpenChange={setAddEventOpen}>
+        <DrawerContent className="bg-[#111113] border-white/10 text-white rounded-t-[32px]">
+          <DrawerHeader className="border-b border-white/10 pb-4 mb-4 text-left px-6">
+            <DrawerTitle className="text-xl font-extrabold flex items-center gap-3">
+              {editingEventId ? (
+                <Edit3 className="w-5 h-5 text-white" />
+              ) : (
+                <Plus className="w-5 h-5 text-white" />
+              )}
+              {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="px-6 pb-10">
+            <EventFormContent />
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {!isMobile && (
+        <Dialog
+          open={detailsModalOpen}
+          onOpenChange={(o) => {
+            if (!o) {
+              setDetailsModalOpen(false);
+              setAddEventOpen(false);
+            }
+          }}
+        >
+          <DialogContent className="bg-[#111113]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.6)] text-white w-[95%] max-w-lg rounded-3xl p-8">
+            <DialogHeader className="mb-6 border-b border-white/10 pb-4">
+              <DialogTitle className="text-2xl font-extrabold flex items-center gap-3">
+                <CalIcon className="w-6 h-6 text-white" />{" "}
+                {selectedDay &&
+                  format(selectedDay, "EEEE, dd MMMM", { locale: pl })}
+              </DialogTitle>
+            </DialogHeader>
+
+            {!addEventOpen ? (
+              <div className="space-y-6">
+                <div className="min-h-[150px] max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                  <AgendaList events={selectedDayEvents} />
+                </div>
+                <button
+                  onClick={() => {
+                    openAddForm(selectedDay);
+                  }}
+                  className="w-full py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+                  style={{
+                    background:
+                      "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
+                    color: "#0A0A0B",
+                    boxShadow:
+                      "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Dodaj Wydarzenie
+                </button>
+              </div>
+            ) : (
+              <div className="animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center gap-3 mb-6">
+                  {editingEventId ? (
+                    <Edit3 className="w-5 h-5 text-white" />
+                  ) : (
+                    <Plus className="w-5 h-5 text-white" />
+                  )}
+                  <h3 className="text-lg font-bold">
+                    {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
+                  </h3>
+                </div>
+                <EventFormContent />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+
       <Dialog open={tagsModalOpen} onOpenChange={setTagsModalOpen}>
         <DialogContent className="bg-[#111113]/95 backdrop-blur-xl border border-white/[0.08] shadow-2xl text-white w-[95%] max-w-sm rounded-3xl p-5 md:p-8">
-          <DialogHeader className="mb-4 md:mb-6">
-            <DialogTitle className="text-lg md:text-xl font-extrabold flex items-center gap-2">
-              <Tag className="w-4 h-4 md:w-5 md:h-5 text-white" /> Zarządzaj
-              Kategoriami
+          <DialogHeader className="mb-6">
+            <DialogTitle className="text-xl font-extrabold flex items-center gap-2">
+              <Tag className="w-5 h-5 text-white" /> Kategorie
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 md:space-y-6">
-            <div className="space-y-2 max-h-[200px] md:max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
+          <div className="space-y-6">
+            <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
               {data.tags.length === 0 && (
                 <div className="text-sm text-white/40 italic text-center py-4">
                   Brak zapisanych tagów.
@@ -463,17 +727,17 @@ export default function CalendarPage() {
               {data.tags.map((t) => (
                 <div
                   key={t.id}
-                  className="flex items-center justify-between bg-black/40 border border-white/5 rounded-xl md:rounded-2xl px-3 md:px-4 py-2.5 md:py-3.5 hover:bg-white/5 transition-colors group"
+                  className="flex items-center justify-between bg-black/40 border border-white/5 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors group"
                 >
-                  <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex items-center gap-3">
                     <div
-                      className="w-3 h-3 md:w-3.5 md:h-3.5 rounded-full ring-2 ring-white/10"
+                      className="w-3.5 h-3.5 rounded-full ring-2 ring-white/10"
                       style={{
                         backgroundColor: t.color,
                         boxShadow: `0 0 12px ${t.color}`,
                       }}
                     />
-                    <span className="text-[13px] md:text-[14px] font-bold tracking-wide">
+                    <span className="text-[14px] font-bold tracking-wide">
                       {t.name}
                     </span>
                   </div>
@@ -487,30 +751,30 @@ export default function CalendarPage() {
               ))}
             </div>
 
-            <div className="pt-4 md:pt-6 border-t border-white/10">
-              <div className="text-[10px] md:text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 md:mb-3 ml-1">
+            <div className="pt-6 border-t border-white/10">
+              <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-3 ml-1">
                 Dodaj Nową Kategorie
               </div>
               <input
                 type="text"
-                placeholder="Np. Uczelnia..."
+                placeholder="Np. Garaż..."
                 value={newTag.name}
                 onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
-                className="w-full h-10 md:h-12 bg-black/40 border border-white/10 rounded-xl px-3 md:px-4 text-sm text-white outline-none focus:border-white/30 mb-3 md:mb-4 transition-colors"
+                className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-white/30 mb-4 transition-colors"
               />
-              <div className="flex flex-wrap gap-2 justify-center mb-4 md:mb-6 bg-black/20 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">
+              <div className="flex flex-wrap gap-2 justify-center mb-6 bg-black/20 p-3 rounded-2xl border border-white/5">
                 {PALETTE.map((color) => (
                   <button
                     key={color}
                     onClick={() => setNewTag({ ...newTag, color })}
-                    className={`w-6 h-6 md:w-7 md:h-7 rounded-full transition-all ${newTag.color === color ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-[#111113] shadow-lg" : "hover:scale-110 opacity-60 hover:opacity-100"}`}
+                    className={`w-7 h-7 rounded-full transition-all ${newTag.color === color ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-[#111113] shadow-lg" : "hover:scale-110 opacity-60 hover:opacity-100"}`}
                     style={{ backgroundColor: color }}
                   />
                 ))}
               </div>
               <button
                 onClick={handleAddTag}
-                className="w-full h-10 md:h-12 bg-white text-black font-bold rounded-xl shadow-[0_4px_14px_rgba(255,255,255,0.15)] hover:bg-gray-200 transition-all active:scale-[0.98]"
+                className="w-full h-12 bg-white text-black font-bold rounded-xl shadow-[0_4px_14px_rgba(255,255,255,0.15)] hover:bg-gray-200 transition-all active:scale-[0.98]"
               >
                 Stwórz Tag
               </button>

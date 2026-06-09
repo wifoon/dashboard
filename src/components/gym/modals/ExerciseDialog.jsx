@@ -58,7 +58,7 @@ export default function ExerciseDialog({
       <DialogContent className="bg-[#111113] border-white/10 text-white max-w-sm rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle>
-            {mode === "add" ? "Add Exercise" : "Edit Exercise"}
+            {mode === "add" ? "Dodaj ćwiczenie" : "Edytuj ćwiczenie"}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -67,7 +67,7 @@ export default function ExerciseDialog({
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none"
-            placeholder="Exercise Name"
+            placeholder="Nazwa ćwiczenia"
           />
           <div className="flex gap-2 bg-black/40 p-1 border border-white/10 rounded-xl">
             {state.days.map((d) => (
@@ -90,7 +90,7 @@ export default function ExerciseDialog({
               className="w-4 h-4 accent-[#6ee7b7]"
             />
             <span className="text-sm font-medium text-white/80">
-              Bodyweight (reps only)
+              Ciężar ciała (tylko powtórzenia)
             </span>
           </label>
           <div className="flex gap-3 pt-2">
@@ -98,13 +98,13 @@ export default function ExerciseDialog({
               onClick={onClose}
               className="flex-1 h-12 bg-white/5 rounded-xl text-sm font-bold"
             >
-              Cancel
+              Anuluj
             </button>
             <button
               onClick={handleSave}
               className="flex-1 h-12 bg-white text-black rounded-xl text-sm font-bold"
             >
-              Save
+              Dodaj
             </button>
           </div>
         </div>

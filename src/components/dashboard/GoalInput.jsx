@@ -24,7 +24,7 @@ export default function GoalInput({ onAdd, statusMsg }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          placeholder="Add a goal for today…"
+          placeholder="Dodaj zadanie..."
           className="flex-1 py-[11px] px-[14px] rounded-xl text-[13px] outline-none transition-all w-full"
           style={{
             background: "rgba(255,255,255,0.04)",
@@ -43,7 +43,7 @@ export default function GoalInput({ onAdd, statusMsg }) {
               "inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2)",
           }}
         >
-          + Add
+          + Dodaj
         </button>
       </div>
       {statusMsg && (

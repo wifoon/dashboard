@@ -35,12 +35,12 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="bg-[#111113] border-white/10 text-white max-w-sm rounded-3xl p-6">
         <DialogHeader className="mb-4">
-          <DialogTitle className="text-xl">Settings</DialogTitle>
+          <DialogTitle className="text-xl">Ustawienia</DialogTitle>
         </DialogHeader>
         <div className="space-y-6">
           <div>
             <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-3">
-              Units
+              Jednostki
             </div>
             <div className="flex bg-black/40 p-1 rounded-xl border border-white/10">
               {["kg", "lbs"].map((u) => (
@@ -56,7 +56,7 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
           </div>
           <div>
             <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-3">
-              Training Split
+              Dni Treningowe
             </div>
             <div className="space-y-2">
               {days.map((d, i) => (
@@ -88,7 +88,7 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
                 }
                 className="w-full py-2.5 border border-dashed border-white/20 rounded-xl text-sm text-white/50 font-medium hover:bg-white/5 transition-colors"
               >
-                + Add Day
+                + Dodaj Dzień
               </button>
             </div>
           </div>
@@ -96,7 +96,7 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
             onClick={handleSave}
             className="w-full h-12 bg-white text-black font-bold rounded-xl"
           >
-            Save Changes
+            Zapisz
           </button>
         </div>
       </DialogContent>

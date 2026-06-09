@@ -6,11 +6,14 @@ import {
   BookOpen,
   Calendar,
   Cloud,
+  LogOut, // <-- Dodany import ikony
 } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext"; // <-- Dodany import autoryzacji
 
 export default function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth(); // <-- Wyciągamy funkcję wylogowania
 
   const tabs = [
     {
@@ -34,20 +37,22 @@ export default function BottomNav() {
     {
       id: "calendar",
       path: "/calendar",
-      label: "CALENDAR",
+      label: "KALENDARZ",
       icon: <Calendar className="w-4 h-4 sm:w-4.5 sm:h-4.5" />,
     },
     {
       id: "files",
       path: "/files",
-      label: "FILES",
+      label: "DYSK",
       icon: <Cloud className="w-4 h-4 sm:w-4.5 sm:h-4.5" />,
-    }, // <-- NOWA ZAKŁADKA
+    },
   ];
 
   return (
-    <div className="fixed left-0 right-0 bottom-0 z-[100] flex justify-center p-3 pb-4 sm:pb-5 pointer-events-none">
-      <div className="pointer-events-auto flex w-full max-w-[540px] gap-1 p-1 bg-[#141416]/80 backdrop-blur-xl border border-white/10 rounded-[18px] shadow-2xl justify-between">
+    // Zmieniono z-[100] na z-40, aby Drawery (z-50) otwierały się NAD nawigacją
+    <div className="fixed left-0 right-0 bottom-0 z-40 flex justify-center p-3 pb-4 sm:pb-5 pointer-events-none">
+      <div className="pointer-events-auto flex w-full max-w-[540px] gap-1 p-1 bg-[#141416]/80 backdrop-blur-xl border border-white/10 rounded-[18px] shadow-2xl justify-between items-center">
+        {/* Renderowanie głównych zakładek */}
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.path;
 
@@ -67,6 +72,18 @@ export default function BottomNav() {
             </button>
           );
         })}
+
+        {/* Separator wizualny */}
+        <div className="w-px h-8 bg-white/10 mx-1 shrink-0" />
+
+        {/* Przycisk wylogowania jako osobny element */}
+        <button
+          onClick={logout}
+          title="Wyloguj się"
+          className="inline-flex flex-col items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3 px-2 sm:px-3 rounded-[13px] text-white/30 hover:text-[#ff6b6b] hover:bg-[#ff6b6b]/10 transition-all active:scale-95 shrink-0"
+        >
+          <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+        </button>
       </div>
     </div>
   );
