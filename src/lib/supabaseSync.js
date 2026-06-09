@@ -41,6 +41,8 @@ let isPushing = false;
 let pushPending = false;
 
 function isSyncedKey(key) {
+  if (key === "po_coach_photos") return false;
+
   return SYNCED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 

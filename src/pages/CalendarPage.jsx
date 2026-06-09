@@ -260,7 +260,7 @@ export default function CalendarPage() {
           </div>
           <input
             type="text"
-            placeholder="Np. Trening bouldering..."
+            placeholder="Nazwa wydarzenia..."
             value={newEvent.title}
             onChange={(e) =>
               setNewEvent({ ...newEvent, title: e.target.value })
@@ -769,7 +769,7 @@ export default function CalendarPage() {
               </div>
               <input
                 type="text"
-                placeholder="Np. Garaż..."
+                placeholder="Kategoria..."
                 value={newTag.name}
                 onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
                 className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-base md:text-sm text-white outline-none focus:border-white/30 mb-4 transition-colors"

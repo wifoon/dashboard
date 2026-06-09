@@ -45,7 +45,6 @@ export function storeDelete(key) {
 }
 
 export function storeListKeys(prefix) {
-  // Zmiana: Zabezpieczenie przed błędem iOS WebKit
   return Object.keys(localStorage)
     .filter((k) => k.startsWith(prefix))
     .sort();
@@ -113,21 +112,33 @@ export function runRollover() {
   const keys = storeListKeys("goals:");
   const todayGoals = getTodayGoals();
   const todayTexts = new Set(todayGoals.map((g) => g.text));
+  let hasChanges = false;
 
   for (const key of keys) {
     const dateStr = key.replace("goals:", "");
     if (dateStr >= activeDate) continue;
+
     const old = storeGet(key) || [];
     const undone = old.filter((g) => !g.done);
     for (const g of undone) {
       if (!todayTexts.has(g.text)) {
         todayGoals.push({ ...g, done: false, isRollover: true });
         todayTexts.add(g.text);
+        hasChanges = true;
       }
     }
-    storeDelete(key);
+    localStorage.removeItem(key);
+    hasChanges = true;
   }
-  setTodayGoals(todayGoals);
+
+  if (hasChanges) {
+    localStorage.setItem(`goals:${activeDate}`, JSON.stringify(todayGoals));
+    window.dispatchEvent(
+      new CustomEvent("synced-storage-changed", {
+        detail: { key: `goals:${activeDate}` },
+      }),
+    );
+  }
 }
 
 // Streak calculation
@@ -141,7 +152,10 @@ export function isSyncedKey(key) {
 
 export function runStreakCheck() {
   const activeDate = getActiveDateString();
-  const streak = getStreak();
+  const streak = storeGet("goal_streak_v1") || {
+    count: 0,
+    lastProcessedDate: null,
+  };
   const keys = storeListKeys("goals:")
     .map((k) => k.replace("goals:", ""))
     .filter((d) => d < activeDate)
@@ -149,6 +163,7 @@ export function runStreakCheck() {
 
   let { count, lastProcessedDate } = streak;
   const startIdx = lastProcessedDate ? keys.indexOf(lastProcessedDate) + 1 : 0;
+  let hasChanges = false;
 
   for (let i = startIdx < 0 ? 0 : startIdx; i < keys.length; i++) {
     const goals = storeGet(`goals:${keys[i]}`) || [];
@@ -159,8 +174,20 @@ export function runStreakCheck() {
       count = 0;
     }
     lastProcessedDate = keys[i];
+    hasChanges = true;
   }
 
-  storeSet("goal_streak_v1", { count, lastProcessedDate });
+  if (hasChanges) {
+    // Cichy zapis
+    localStorage.setItem(
+      "goal_streak_v1",
+      JSON.stringify({ count, lastProcessedDate }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("synced-storage-changed", {
+        detail: { key: "goal_streak_v1" },
+      }),
+    );
+  }
   return count;
 }
