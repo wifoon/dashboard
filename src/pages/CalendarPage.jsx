@@ -255,7 +255,7 @@ export default function CalendarPage() {
           </div>
           <input
             type="text"
-            placeholder="Podaj wydarzenie..."
+            placeholder="Np. Trening bouldering..."
             value={newEvent.title}
             onChange={(e) =>
               setNewEvent({ ...newEvent, title: e.target.value })
@@ -355,7 +355,7 @@ export default function CalendarPage() {
             <div
               key={ev.id}
               onClick={() => openEditForm(ev)}
-              className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/5 cursor-pointer"
+              className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/[0.06] transition-colors"
             >
               <div
                 className="flex items-center gap-1.5 text-sm font-bold font-mono px-3 py-1.5 rounded-xl shadow-inner shrink-0"
@@ -538,8 +538,8 @@ export default function CalendarPage() {
         {/* =========================================
             WIDOK DESKTOP
             ========================================= */}
-        <div className="hidden md:flex flex-col flex-1 min-h-0">
-          <div className="grid grid-cols-7 gap-2 mb-2 shrink-0">
+        <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="grid grid-cols-7 gap-2 mb-2 shrink-0 pr-2">
             {["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"].map((d) => (
               <div
                 key={d}
@@ -550,7 +550,11 @@ export default function CalendarPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-2 flex-1 min-h-0 auto-rows-fr">
+          {/* Siatka z usuniętym wymuszonym wypełnieniem reszty ekranu, zamiast tego przewijanie zawartości */}
+          <div
+            className="grid grid-cols-7 gap-2 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2 content-start"
+            style={{ gridAutoRows: "minmax(90px, auto)" }}
+          >
             {daysInMonth.map((day) => {
               const dateStr = format(day, "yyyy-MM-dd");
               const dayEvents = data.events
@@ -566,8 +570,8 @@ export default function CalendarPage() {
                     setSelectedDay(day);
                     setDetailsModalOpen(true);
                   }}
-                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative overflow-hidden min-h-0
-                    ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06] transition-colors" : "bg-transparent border-transparent opacity-10 pointer-events-none"}
+                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative transition-colors
+                    ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06]" : "bg-transparent border-transparent opacity-10 pointer-events-none"}
                   `}
                 >
                   <div
@@ -584,9 +588,9 @@ export default function CalendarPage() {
                     </span>
                   </div>
 
-                  {/* KAFELKI WYDARZEŃ */}
-                  <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 custom-scrollbar pr-0.5 max-h-[calc(100%-28px)]">
-                    {dayEvents.map((ev) => {
+                  {/* KAFELKI WYDARZEŃ (Rozszerzają okienko dynamicznie) */}
+                  <div className="flex flex-col gap-1.5 mt-2 flex-1">
+                    {dayEvents.slice(0, 2).map((ev) => {
                       const tag = data.tags.find((t) => t.id === ev.tagId);
                       return (
                         <div
@@ -595,32 +599,38 @@ export default function CalendarPage() {
                             e.stopPropagation();
                             openEditFormFromDesktopGrid(ev, day);
                           }}
-                          className="pl-2 pr-1.5 py-1.5 rounded-lg flex flex-col shadow-sm border cursor-pointer"
+                          className="pl-2.5 pr-2 py-1.5 rounded-lg flex flex-col justify-center border cursor-pointer shrink-0 transition-transform hover:-translate-y-[1px]"
                           style={{
                             backgroundColor: tag
                               ? `${tag.color}15`
                               : "rgba(255,255,255,0.03)",
-                            border: `1px solid ${tag ? `${tag.color}30` : "rgba(255,255,255,0.08)"}`,
-                            borderLeft: `3px solid ${tag ? tag.color : "rgba(255,255,255,0.3)"}`,
+                            borderColor: tag
+                              ? `${tag.color}30`
+                              : "rgba(255,255,255,0.08)",
+                            borderLeft: `3.5px solid ${tag ? tag.color : "rgba(255,255,255,0.3)"}`,
                           }}
                         >
                           <span
-                            className="font-mono text-[10px] font-bold tracking-wide mb-[1px]"
+                            className="font-mono text-[11px] font-bold tracking-wide leading-none mb-[2px]"
                             style={{
                               color: tag ? tag.color : "rgba(255,255,255,0.7)",
                             }}
                           >
                             {ev.time}
                           </span>
-                          <span
-                            className="text-[11.5px] font-semibold leading-tight line-clamp-2"
-                            style={{ color: "rgba(255,255,255,0.95)" }}
-                          >
+                          <span className="text-[13px] font-semibold leading-tight line-clamp-2 text-white/90">
                             {ev.title}
                           </span>
                         </div>
                       );
                     })}
+
+                    {/* Przycisk "+X więcej" */}
+                    {dayEvents.length > 2 && (
+                      <div className="mt-0.5 w-full text-center text-[11px] font-bold text-white/40 hover:text-white/70 hover:bg-white/10 bg-white/5 rounded-md py-1.5 border border-white/5 transition-colors cursor-pointer">
+                        +{dayEvents.length - 2} więcej...
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -658,6 +668,7 @@ export default function CalendarPage() {
             if (!o) {
               setDetailsModalOpen(false);
               setAddEventOpen(false);
+              setEditingEventId(null);
             }
           }}
         >
