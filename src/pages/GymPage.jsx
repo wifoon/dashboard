@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Settings, Camera, ChevronRight } from "lucide-react";
 import { CONFIG, LS_KEY, WT_KEY, PHOTO_KEY, uid } from "@/utils/gymConfig";
 
@@ -44,20 +44,48 @@ export default function GymPage() {
     }
   });
 
+  const isInitialMount1 = useRef(true);
+  const isInitialMount2 = useRef(true);
+  const isInitialMount3 = useRef(true);
+
   const [photoLibraryOpen, setPhotoLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
 
   const saveToLS = useCallback((key, data) => {
-    localStorage.setItem(key, JSON.stringify(data));
-    window.dispatchEvent(
-      new CustomEvent("synced-storage-changed", { detail: { key } }),
-    );
+    const current = localStorage.getItem(key);
+    const next = JSON.stringify(data);
+    if (current !== next) {
+      localStorage.setItem(key, next);
+      window.dispatchEvent(
+        new CustomEvent("synced-storage-changed", { detail: { key } }),
+      );
+    }
   }, []);
 
-  useEffect(() => saveToLS(LS_KEY, state), [state, saveToLS]);
-  useEffect(() => saveToLS(WT_KEY, wtEntries), [wtEntries, saveToLS]);
-  useEffect(() => saveToLS(PHOTO_KEY, photos), [photos, saveToLS]);
+  useEffect(() => {
+    if (isInitialMount1.current) {
+      isInitialMount1.current = false;
+      return;
+    }
+    saveToLS(LS_KEY, state);
+  }, [state, saveToLS]);
+
+  useEffect(() => {
+    if (isInitialMount2.current) {
+      isInitialMount2.current = false;
+      return;
+    }
+    saveToLS(WT_KEY, wtEntries);
+  }, [wtEntries, saveToLS]);
+
+  useEffect(() => {
+    if (isInitialMount3.current) {
+      isInitialMount3.current = false;
+      return;
+    }
+    saveToLS(PHOTO_KEY, photos);
+  }, [photos, saveToLS]);
   useEffect(() => {
     const syncHandler = () => {
       try {
