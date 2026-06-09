@@ -66,7 +66,17 @@ export default function TodayCard({ goals, reload }) {
   };
 
   const handleAdd = (text, polish) => {
-    const g = [...goals, { text, done: false }];
+    const newGoal = { text, done: false };
+    const g = [...goals];
+
+    const firstRolloverIdx = g.findIndex((x) => x.isRollover);
+
+    if (firstRolloverIdx !== -1) {
+      g.splice(firstRolloverIdx, 0, newGoal);
+    } else {
+      g.push(newGoal);
+    }
+
     setTodayGoals(g);
     reload();
   };

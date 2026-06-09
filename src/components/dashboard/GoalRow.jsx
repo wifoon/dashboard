@@ -127,30 +127,38 @@ export default function GoalRow({
       </button>
 
       {/* Text */}
-      <span
-        ref={textRef}
-        className="flex-1 text-[13px] outline-none"
-        contentEditable={editing}
-        suppressContentEditableWarning
-        onClick={() => !readOnly && !editing && setEditing(true)}
-        onBlur={commitEdit}
-        onKeyDown={editing ? handleKeyDown : undefined}
-        style={{
-          color: isQueued && !isDone ? "#FFE2A8" : "var(--text-primary)",
-          textDecoration: isDone ? "line-through" : "none",
-          textDecorationColor: isDone ? "rgba(255,255,255,0.4)" : undefined,
-          cursor: readOnly ? "default" : "text",
-          ...(editing
-            ? {
-                outline: "1px solid rgba(255,255,255,0.2)",
-                borderRadius: "4px",
-                padding: "0 4px",
-              }
-            : {}),
-        }}
-      >
-        {goal.text}
-      </span>
+      <div className="flex-1 flex items-center flex-wrap gap-2">
+        <span
+          ref={textRef}
+          className="text-[13px] outline-none"
+          contentEditable={editing}
+          suppressContentEditableWarning
+          onClick={() => !readOnly && !editing && setEditing(true)}
+          onBlur={commitEdit}
+          onKeyDown={editing ? handleKeyDown : undefined}
+          style={{
+            color: isQueued && !isDone ? "#FFE2A8" : "var(--text-primary)",
+            textDecoration: isDone ? "line-through" : "none",
+            textDecorationColor: isDone ? "rgba(255,255,255,0.4)" : undefined,
+            cursor: readOnly ? "default" : "text",
+            ...(editing
+              ? {
+                  outline: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  padding: "0 4px",
+                }
+              : {}),
+          }}
+        >
+          {goal.text}
+        </span>
+
+        {goal.isRollover && !isDone && !editing && (
+          <span className="inline-flex items-center text-[9px] uppercase tracking-wider font-bold text-[#f2c063]/60 bg-[#f2c063]/10 px-1.5 py-[3px] rounded-md pointer-events-none select-none translate-y-[-1px]">
+            Zaległe
+          </span>
+        )}
+      </div>
 
       {/* Queue button */}
       {!readOnly && (

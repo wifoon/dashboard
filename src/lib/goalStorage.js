@@ -123,7 +123,7 @@ export function runRollover() {
     const undone = old.filter((g) => !g.done);
     for (const g of undone) {
       if (!todayTexts.has(g.text)) {
-        todayGoals.push({ text: g.text, done: false });
+        todayGoals.push({ ...g, done: false, isRollover: true });
         todayTexts.add(g.text);
       }
     }
