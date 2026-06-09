@@ -141,7 +141,11 @@ export default function CalendarPage() {
     setData(getCalData());
     const handler = () => setData(getCalData());
     window.addEventListener("calendar-changed", handler);
-    return () => window.removeEventListener("calendar-changed", handler);
+    window.addEventListener("storage-synced", handler);
+    return () => {
+      window.removeEventListener("calendar-changed", handler);
+      window.removeEventListener("storage-synced", handler);
+    };
   }, []);
 
   const monthStart = startOfMonth(currentDate);

@@ -48,7 +48,11 @@ export default function NotesPage() {
     setNotes(getNotes());
     const handler = () => setNotes(getNotes());
     window.addEventListener("notes-changed", handler);
-    return () => window.removeEventListener("notes-changed", handler);
+    window.addEventListener("storage-synced", handler);
+    return () => {
+      window.removeEventListener("notes-changed", handler);
+      window.removeEventListener("storage-synced", handler);
+    };
   }, []);
 
   const sortedNotes = useMemo(() => {

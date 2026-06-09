@@ -79,12 +79,18 @@ function applyRemoteState(remote) {
         changed = true;
       }
     }
+
+    // Zabezpieczona pętla usuwająca osierocone klucze
+    const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (isSyncedKey(k) && !(k in remote)) {
-        origRemove(k);
-        changed = true;
+        keysToRemove.push(k);
       }
+    }
+    for (const k of keysToRemove) {
+      origRemove(k);
+      changed = true;
     }
   } finally {
     suppressSync = false;
@@ -110,17 +116,15 @@ async function pushNow() {
   if (json === lastSyncedJson) return;
 
   try {
-    const { error } = await supabase
-      .from("app_state")
-      .upsert(
-        {
-          user_id: currentUserId,
-          key: APP_KEY,
-          data: state,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id, key" },
-      );
+    const { error } = await supabase.from("app_state").upsert(
+      {
+        user_id: currentUserId,
+        key: APP_KEY,
+        data: state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id, key" },
+    );
 
     if (!error) lastSyncedJson = json;
   } catch (e) {
@@ -131,10 +135,9 @@ async function pushNow() {
 function schedulePush() {
   if (suppressSync || !currentUserId) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(pushNow, 250);
+  pushTimer = setTimeout(pushNow, 50); // Skrócono czas zapisu
 }
 
-// Uruchamiane po zalogowaniu
 export async function startSync(userId) {
   if (!supabase) return;
   currentUserId = userId;
@@ -147,8 +150,18 @@ export async function startSync(userId) {
     .maybeSingle();
 
   if (data && data.data && Object.keys(data.data).length > 0) {
+    // Łączenie danych lokalnych (offline) z danymi z chmury zamiast bezwzględnego usuwania
+    const localState = collectState();
+    let needsPush = false;
+    for (const k in localState) {
+      if (!(k in data.data)) {
+        data.data[k] = localState[k];
+        needsPush = true;
+      }
+    }
     lastSyncedJson = JSON.stringify(data.data);
     maybeApplyRemote(data.data);
+    if (needsPush) schedulePush();
   } else if (Object.keys(collectState()).length > 0) {
     schedulePush();
   }
@@ -174,7 +187,6 @@ export async function startSync(userId) {
     .subscribe();
 }
 
-// Uruchamiane po wylogowaniu
 export function stopSync() {
   if (realTimeChannel) {
     supabase.removeChannel(realTimeChannel);

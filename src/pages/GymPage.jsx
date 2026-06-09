@@ -58,6 +58,28 @@ export default function GymPage() {
   useEffect(() => saveToLS(LS_KEY, state), [state, saveToLS]);
   useEffect(() => saveToLS(WT_KEY, wtEntries), [wtEntries, saveToLS]);
   useEffect(() => saveToLS(PHOTO_KEY, photos), [photos, saveToLS]);
+  useEffect(() => {
+    const syncHandler = () => {
+      try {
+        const rawLs = localStorage.getItem(LS_KEY);
+        if (rawLs) setState(JSON.parse(rawLs));
+
+        const rawWt = localStorage.getItem(WT_KEY);
+        if (rawWt)
+          setWtEntries(
+            JSON.parse(rawWt).sort((a, b) =>
+              a.dateKey.localeCompare(b.dateKey),
+            ),
+          );
+
+        const rawPh = localStorage.getItem(PHOTO_KEY);
+        if (rawPh) setPhotos(JSON.parse(rawPh));
+      } catch (e) {}
+    };
+
+    window.addEventListener("storage-synced", syncHandler);
+    return () => window.removeEventListener("storage-synced", syncHandler);
+  }, []);
 
   const showToast = (msg) => {
     setToastMsg(msg);
