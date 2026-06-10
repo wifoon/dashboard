@@ -4,6 +4,12 @@ import { todosApi, calendarApi } from "@/lib/api";
 import { formatDate } from "@/lib/dates";
 import GoalRow from "./GoalRow";
 import GoalInput from "./GoalInput";
+import { AlignLeft, Check } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export default function TomorrowCard({ goals, dateStr }) {
   const [showAll, setShowAll] = useState(false);
@@ -25,7 +31,7 @@ export default function TomorrowCard({ goals, dateStr }) {
     .filter((e) => e.date === dateStr)
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  // 🚀 OPTYMISTYCZNA MUTACJA DLA EDYCJI
+  // MUTACJE ZADAŃ
   const updateMutation = useMutation({
     mutationFn: todosApi.updateTodo,
     onMutate: async ({ id, updates }) => {
@@ -44,7 +50,6 @@ export default function TomorrowCard({ goals, dateStr }) {
       queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
   });
 
-  // 🚀 OPTYMISTYCZNA MUTACJA DLA DODAWANIA
   const addMutation = useMutation({
     mutationFn: todosApi.createTodo,
     onMutate: async (newTodo) => {
@@ -71,7 +76,6 @@ export default function TomorrowCard({ goals, dateStr }) {
       queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
   });
 
-  // 🚀 OPTYMISTYCZNA MUTACJA DLA USUWANIA
   const deleteMutation = useMutation({
     mutationFn: todosApi.deleteTodo,
     onMutate: async (id) => {
@@ -88,6 +92,25 @@ export default function TomorrowCard({ goals, dateStr }) {
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
+  });
+
+  // MUTACJA WYDARZEŃ (Optymistyczne Odhaczanie)
+  const toggleEventMutation = useMutation({
+    mutationFn: ({ id, updates }) => calendarApi.updateEvent({ id, updates }),
+    onMutate: async ({ id, updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["calendar_events"] });
+      const previousEvents = queryClient.getQueryData(["calendar_events"]);
+      queryClient.setQueryData(["calendar_events"], (old) =>
+        old ? old.map((e) => (e.id === id ? { ...e, ...updates } : e)) : [],
+      );
+      return { previousEvents };
+    },
+    onError: (err, vars, context) => {
+      if (context?.previousEvents)
+        queryClient.setQueryData(["calendar_events"], context.previousEvents);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
   });
 
   const handleEdit = (id, newText) =>
@@ -143,34 +166,129 @@ export default function TomorrowCard({ goals, dateStr }) {
             {tomorrowEvents.map((ev) => {
               const tag = tags.find((t) => t.id === ev.tag_id);
               return (
-                <div
-                  key={ev.id}
-                  className="flex items-center gap-3 bg-white/[0.02] hover:bg-white/[0.04] transition-colors border border-white/5 rounded-2xl p-3 shadow-inner"
-                >
-                  <div className="text-[12px] font-bold text-[#f2c063] font-mono bg-[#f2c063]/10 px-2.5 py-1 rounded-lg">
-                    {ev.time}
-                  </div>
-                  <div className="flex-1 text-[13px] font-medium text-white/90">
-                    {ev.title}
-                  </div>
-                  {tag && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/5 shrink-0">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{
-                          backgroundColor: tag.color,
-                          boxShadow: `0 0 8px ${tag.color}80`,
+                <Popover key={ev.id}>
+                  <PopoverTrigger asChild>
+                    <div
+                      className={`flex items-center gap-3 transition-colors border rounded-2xl p-3 shadow-inner cursor-pointer ${ev.is_done ? "bg-[#6BE3A4]/5 border-[#6BE3A4]/20" : "bg-white/[0.02] hover:bg-white/[0.04] border-white/5"}`}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleEventMutation.mutate({
+                            id: ev.id,
+                            updates: { is_done: !ev.is_done },
+                          });
                         }}
-                      />
-                      <span
-                        className="text-[10px] font-bold uppercase tracking-wider"
-                        style={{ color: tag.color }}
+                        className={`w-[22px] h-[22px] rounded-[7px] border-[1.5px] flex items-center justify-center shrink-0 transition-all ${ev.is_done ? "border-[#6BE3A4] bg-[#6BE3A4] shadow-[0_0_12px_rgba(107,227,164,0.40)]" : "border-white/20 bg-white/5"}`}
                       >
-                        {tag.name}
-                      </span>
+                        {ev.is_done && (
+                          <div
+                            className="w-[5px] h-[9px] border-r-2 border-b-2 border-[#050506]"
+                            style={{
+                              transform: "rotate(45deg) translateY(-1px)",
+                              animation:
+                                "check-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            }}
+                          />
+                        )}
+                      </button>
+
+                      <div
+                        className={`text-[12px] font-bold font-mono px-2.5 py-1 rounded-lg ${ev.is_done ? "bg-white/5 text-white/40" : "bg-[#f2c063]/10 text-[#f2c063]"}`}
+                      >
+                        {ev.time}
+                      </div>
+
+                      <div
+                        className={`flex-1 text-[13px] font-medium flex flex-wrap items-center gap-2 ${ev.is_done ? "text-white/40 line-through decoration-white/20" : "text-white/90"}`}
+                      >
+                        {ev.title}
+                        {ev.description && (
+                          <AlignLeft className="w-3.5 h-3.5 text-white/30 shrink-0" />
+                        )}
+                      </div>
+
+                      {tag && (
+                        <div
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md shrink-0 border ${ev.is_done ? "bg-white/5 border-white/5 opacity-50" : "bg-white/5 border-white/5"}`}
+                        >
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{
+                              backgroundColor: tag.color,
+                              boxShadow: ev.is_done
+                                ? "none"
+                                : `0 0 8px ${tag.color}80`,
+                            }}
+                          />
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider"
+                            style={{ color: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </PopoverTrigger>
+
+                  {/* Zaktualizowany Popup */}
+                  <PopoverContent
+                    side="top"
+                    sideOffset={8}
+                    className="bg-[#111113]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] rounded-2xl p-4 text-white w-[280px] z-[200]"
+                  >
+                    <div className="flex justify-between items-start mb-3 gap-2">
+                      <h4
+                        className={`font-bold text-[15px] leading-tight ${ev.is_done ? "text-white/40 line-through" : "text-white/90"}`}
+                      >
+                        {ev.title}
+                      </h4>
+                      <div
+                        className="text-[11px] font-bold font-mono px-2 py-1 rounded-md shrink-0"
+                        style={{
+                          color: ev.is_done
+                            ? "rgba(255,255,255,0.4)"
+                            : tag
+                              ? tag.color
+                              : "#f2c063",
+                          backgroundColor: ev.is_done
+                            ? "rgba(255,255,255,0.05)"
+                            : tag
+                              ? `${tag.color}15`
+                              : "#f2c06315",
+                        }}
+                      >
+                        {ev.time}
+                      </div>
+                    </div>
+                    {ev.description ? (
+                      <div
+                        className={`text-[13px] leading-relaxed bg-black/40 p-3 rounded-xl mb-4 border border-white/5 whitespace-pre-wrap break-words ${ev.is_done ? "text-white/30" : "text-white/70"}`}
+                      >
+                        {ev.description}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-white/40 italic mb-4">
+                        Brak dodatkowej notatki.
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        toggleEventMutation.mutate({
+                          id: ev.id,
+                          updates: { is_done: !ev.is_done },
+                        });
+                      }}
+                      className={`w-full text-xs py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 border ${ev.is_done ? "bg-[#6BE3A4]/10 text-[#6BE3A4] hover:bg-[#6BE3A4]/20 border-[#6BE3A4]/20" : "bg-white/10 text-white hover:bg-white/20 border-white/5"}`}
+                    >
+                      <Check className="w-4 h-4" />{" "}
+                      {ev.is_done
+                        ? "Cofnij ukończenie"
+                        : "Oznacz jako wykonane"}
+                    </button>
+                  </PopoverContent>
+                </Popover>
               );
             })}
           </div>

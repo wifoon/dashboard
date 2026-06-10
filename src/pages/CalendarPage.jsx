@@ -26,6 +26,8 @@ import {
   Trash2,
   Clock,
   Edit3,
+  AlignLeft,
+  Check,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { calendarApi } from "@/lib/api";
@@ -49,6 +51,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 const PALETTE = [
   "#ef4444",
@@ -123,7 +130,9 @@ export default function CalendarPage() {
   const [newEvent, setNewEvent] = useState({
     time: "12:00",
     title: "",
+    description: "",
     tag_id: "",
+    is_done: false,
   });
   const [newTag, setNewTag] = useState({ name: "", color: PALETTE[0] });
 
@@ -133,7 +142,6 @@ export default function CalendarPage() {
     containScroll: "trimSnaps",
   });
 
-  // POBIERANIE DANYCH
   const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["calendar_events"],
     queryFn: calendarApi.fetchEvents,
@@ -143,7 +151,6 @@ export default function CalendarPage() {
     queryFn: calendarApi.fetchTags,
   });
 
-  // MUTACJE
   const createEventMut = useMutation({
     mutationFn: calendarApi.createEvent,
     onSuccess: () =>
@@ -172,6 +179,24 @@ export default function CalendarPage() {
     },
   });
 
+  const toggleEventMut = useMutation({
+    mutationFn: ({ id, updates }) => calendarApi.updateEvent({ id, updates }),
+    onMutate: async ({ id, updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["calendar_events"] });
+      const previous = queryClient.getQueryData(["calendar_events"]);
+      queryClient.setQueryData(["calendar_events"], (old) =>
+        old ? old.map((e) => (e.id === id ? { ...e, ...updates } : e)) : [],
+      );
+      return { previous };
+    },
+    onError: (err, vars, context) => {
+      if (context?.previous)
+        queryClient.setQueryData(["calendar_events"], context.previous);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
+  });
+
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -198,16 +223,22 @@ export default function CalendarPage() {
       date: format(selectedDay, "yyyy-MM-dd"),
       time: newEvent.time,
       title: newEvent.title.trim(),
+      description: newEvent.description?.trim() || null,
       tag_id: newEvent.tag_id || null,
+      is_done: newEvent.is_done || false,
     };
 
-    if (editingEventId) {
+    if (editingEventId)
       updateEventMut.mutate({ id: editingEventId, updates: payload });
-    } else {
-      createEventMut.mutate(payload);
-    }
+    else createEventMut.mutate(payload);
 
-    setNewEvent({ time: "12:00", title: "", tag_id: "" });
+    setNewEvent({
+      time: "12:00",
+      title: "",
+      description: "",
+      tag_id: "",
+      is_done: false,
+    });
     setEditingEventId(null);
     setAddEventOpen(false);
   };
@@ -229,25 +260,43 @@ export default function CalendarPage() {
   const openAddForm = (day) => {
     setSelectedDay(day);
     setEditingEventId(null);
-    setNewEvent({ time: "12:00", title: "", tag_id: tags[0]?.id || "" });
+    setNewEvent({
+      time: "12:00",
+      title: "",
+      description: "",
+      tag_id: tags[0]?.id || "",
+      is_done: false,
+    });
     setAddEventOpen(true);
   };
 
   const openEditForm = (ev) => {
     setEditingEventId(ev.id);
-    setNewEvent({ time: ev.time, title: ev.title, tag_id: ev.tag_id || "" });
+    setNewEvent({
+      time: ev.time,
+      title: ev.title,
+      description: ev.description || "",
+      tag_id: ev.tag_id || "",
+      is_done: ev.is_done || false,
+    });
     setAddEventOpen(true);
   };
 
   const openEditFormFromDesktopGrid = (ev, day) => {
     setSelectedDay(day);
     setEditingEventId(ev.id);
-    setNewEvent({ time: ev.time, title: ev.title, tag_id: ev.tag_id || "" });
+    setNewEvent({
+      time: ev.time,
+      title: ev.title,
+      description: ev.description || "",
+      tag_id: ev.tag_id || "",
+      is_done: ev.is_done || false,
+    });
     setDetailsModalOpen(true);
     setAddEventOpen(true);
   };
 
-  const EventFormContent = () => (
+  const renderEventFormContent = () => (
     <div className="space-y-6 pt-2">
       <div className="space-y-4">
         <div>
@@ -274,12 +323,25 @@ export default function CalendarPage() {
             onChange={(val) => setNewEvent({ ...newEvent, time: val })}
           />
         </div>
+        <div>
+          <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1 flex items-center gap-1.5">
+            <AlignLeft className="w-3.5 h-3.5" /> Notatka (opcjonalnie)
+          </div>
+          <textarea
+            placeholder="Dodatkowy opis wydarzenia..."
+            value={newEvent.description}
+            onChange={(e) =>
+              setNewEvent({ ...newEvent, description: e.target.value })
+            }
+            className="w-full h-24 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white outline-none focus:border-white/30 transition-colors resize-none custom-scrollbar"
+          />
+        </div>
       </div>
       <div>
         <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
           Kategoria (Tag)
         </div>
-        <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto custom-scrollbar bg-black/20 p-2 rounded-2xl border border-white/5">
+        <div className="flex flex-col gap-2 max-h-[140px] overflow-y-auto custom-scrollbar bg-black/20 p-2 rounded-2xl border border-white/5">
           <button
             onClick={() => setNewEvent({ ...newEvent, tag_id: "" })}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${!newEvent.tag_id ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
@@ -340,7 +402,89 @@ export default function CalendarPage() {
     </div>
   );
 
-  const AgendaList = ({ eventsList }) => (
+  // ZMIANA: Zmodyfikowany popup z kaskadowymi przyciskami
+  const renderEventPopup = (ev, tag, onEditClick) => (
+    <PopoverContent
+      side="bottom"
+      sideOffset={8}
+      onClick={(e) => e.stopPropagation()}
+      className="bg-[#111113]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] rounded-2xl p-4 text-white w-[280px] z-[200]"
+    >
+      <div className="flex justify-between items-start mb-3 gap-2">
+        <h4
+          className={`font-bold text-[15px] leading-tight ${ev.is_done ? "text-white/40 line-through" : "text-white/90"}`}
+        >
+          {ev.title}
+        </h4>
+        <div
+          className="text-[11px] font-bold font-mono px-2 py-1 rounded-md shrink-0"
+          style={{
+            color: ev.is_done
+              ? "rgba(255,255,255,0.4)"
+              : tag
+                ? tag.color
+                : "#f2c063",
+            backgroundColor: ev.is_done
+              ? "rgba(255,255,255,0.05)"
+              : tag
+                ? `${tag.color}15`
+                : "#f2c06315",
+          }}
+        >
+          {ev.time}
+        </div>
+      </div>
+      {ev.description ? (
+        <div
+          className={`text-[13px] leading-relaxed bg-black/40 p-3 rounded-xl mb-4 border border-white/5 whitespace-pre-wrap break-words ${ev.is_done ? "text-white/30" : "text-white/70"}`}
+        >
+          {ev.description}
+        </div>
+      ) : (
+        <div className="text-xs text-white/40 italic mb-4">
+          Brak dodatkowej notatki.
+        </div>
+      )}
+
+      {/* Sekcja akcji */}
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => {
+            toggleEventMut.mutate({
+              id: ev.id,
+              updates: { is_done: !ev.is_done },
+            });
+          }}
+          className={`w-full text-xs py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 border ${ev.is_done ? "bg-[#6BE3A4]/10 text-[#6BE3A4] hover:bg-[#6BE3A4]/20 border-[#6BE3A4]/20" : "bg-white/10 text-white hover:bg-white/20 border-white/5"}`}
+        >
+          <Check className="w-4 h-4" />{" "}
+          {ev.is_done ? "Cofnij ukończenie" : "Oznacz jako wykonane"}
+        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              document.body.click();
+              onEditClick(ev);
+            }}
+            className="flex-1 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-xs py-2.5 rounded-xl font-bold transition-colors flex justify-center items-center gap-2 border border-white/5"
+          >
+            <Edit3 className="w-4 h-4" /> Edytuj
+          </button>
+          <button
+            onClick={() => {
+              document.body.click();
+              handleDeleteEvent(ev.id);
+            }}
+            className="flex-1 bg-[#ff6b6b]/5 hover:bg-[#ff6b6b]/15 text-[#ff6b6b]/70 hover:text-[#ff6b6b] text-xs py-2.5 rounded-xl font-bold transition-colors flex justify-center items-center gap-2 border border-[#ff6b6b]/10"
+          >
+            <Trash2 className="w-4 h-4" /> Usuń
+          </button>
+        </div>
+      </div>
+    </PopoverContent>
+  );
+
+  const renderAgendaList = (eventsList) => (
     <div className="flex flex-col gap-3">
       {eventsList.length === 0 ? (
         <div className="text-center py-16 text-white/30 text-sm border border-dashed border-white/10 rounded-3xl bg-black/20">
@@ -350,51 +494,81 @@ export default function CalendarPage() {
         eventsList.map((ev) => {
           const tag = tags.find((t) => t.id === ev.tag_id);
           return (
-            <div
-              key={ev.id}
-              onClick={() => openEditForm(ev)}
-              className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/[0.06] transition-colors"
-            >
-              <div
-                className="flex items-center gap-1.5 text-sm font-bold font-mono px-3 py-1.5 rounded-xl shadow-inner shrink-0"
-                style={{
-                  backgroundColor: tag
-                    ? `${tag.color}15`
-                    : "rgba(255,255,255,0.05)",
-                  color: tag ? tag.color : "#fff",
-                }}
-              >
-                <Clock className="w-3.5 h-3.5 opacity-70" /> {ev.time}
-              </div>
-              <div className="flex-1 font-semibold text-[15px]">{ev.title}</div>
-              {tag && (
+            <Popover key={ev.id}>
+              <PopoverTrigger asChild>
                 <div
-                  className="flex items-center px-2.5 py-1 rounded-md shrink-0 hidden sm:flex border"
-                  style={{
-                    backgroundColor: `${tag.color}15`,
-                    borderColor: `${tag.color}30`,
-                    borderLeft: `3px solid ${tag.color}`,
-                  }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer transition-colors ${ev.is_done ? "bg-[#6BE3A4]/5 hover:bg-[#6BE3A4]/10 border-[#6BE3A4]/20" : "bg-white/[0.03] hover:bg-white/[0.06] border-white/5"}`}
                 >
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-wider"
-                    style={{ color: tag.color }}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleEventMut.mutate({
+                        id: ev.id,
+                        updates: { is_done: !ev.is_done },
+                      });
+                    }}
+                    className={`w-[22px] h-[22px] rounded-[7px] border-[1.5px] flex items-center justify-center shrink-0 transition-all ${ev.is_done ? "border-[#6BE3A4] bg-[#6BE3A4] shadow-[0_0_12px_rgba(107,227,164,0.40)]" : "border-white/20 bg-white/5"}`}
                   >
-                    {tag.name}
-                  </span>
+                    {ev.is_done && (
+                      <div
+                        className="w-[5px] h-[9px] border-r-2 border-b-2 border-[#050506]"
+                        style={{
+                          transform: "rotate(45deg) translateY(-1px)",
+                          animation:
+                            "check-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                        }}
+                      />
+                    )}
+                  </button>
+
+                  <div
+                    className={`flex items-center gap-1.5 text-sm font-bold font-mono px-3 py-1.5 rounded-xl shadow-inner shrink-0 ${ev.is_done ? "bg-white/5 text-white/40" : ""}`}
+                    style={
+                      ev.is_done
+                        ? {}
+                        : {
+                            backgroundColor: tag
+                              ? `${tag.color}15`
+                              : "rgba(255,255,255,0.05)",
+                            color: tag ? tag.color : "#fff",
+                          }
+                    }
+                  >
+                    <Clock className="w-3.5 h-3.5 opacity-70" /> {ev.time}
+                  </div>
+
+                  <div
+                    className={`flex-1 font-semibold text-[15px] flex flex-col justify-center ${ev.is_done ? "text-white/40 line-through decoration-white/20" : "text-white"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {ev.title}
+                      {ev.description && (
+                        <AlignLeft className="w-4 h-4 text-white/30 shrink-0" />
+                      )}
+                    </div>
+                  </div>
+
+                  {tag && (
+                    <div
+                      className={`flex items-center px-2.5 py-1 rounded-md shrink-0 hidden sm:flex border ${ev.is_done ? "opacity-40" : ""}`}
+                      style={{
+                        backgroundColor: `${tag.color}15`,
+                        borderColor: `${tag.color}30`,
+                        borderLeft: `3px solid ${tag.color}`,
+                      }}
+                    >
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider"
+                        style={{ color: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteEvent(ev.id);
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-xl text-white/30 hover:text-[#ff6b6b] hover:bg-[#ff6b6b]/10 transition-colors"
-                title="Usuń"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+              </PopoverTrigger>
+              {renderEventPopup(ev, tag, openEditForm)}
+            </Popover>
           );
         })
       )}
@@ -470,7 +644,7 @@ export default function CalendarPage() {
                 const isSelected = isSameDay(day, selectedDay);
                 const isTodayDate = isToday(day);
                 const dayEventsCount = events.filter(
-                  (e) => e.date === format(day, "yyyy-MM-dd"),
+                  (e) => e.date === format(day, "yyyy-MM-dd") && !e.is_done,
                 ).length;
 
                 return (
@@ -502,7 +676,7 @@ export default function CalendarPage() {
                     </span>
                     <div className="h-1.5 mt-1 z-10 flex gap-1">
                       {dayEventsCount > 0 && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#f2c063]" />
                       )}
                     </div>
                   </div>
@@ -514,7 +688,7 @@ export default function CalendarPage() {
             <h2 className="text-sm font-bold text-white/50 tracking-widest uppercase mb-4">
               Plan na {format(selectedDay, "d MMMM", { locale: pl })}
             </h2>
-            <AgendaList eventsList={selectedDayEvents} />
+            {renderAgendaList(selectedDayEvents)}
           </div>
           <button
             onClick={() => openAddForm(selectedDay)}
@@ -574,43 +748,60 @@ export default function CalendarPage() {
                     </span>
                   </div>
                   <div className="flex flex-col gap-1.5 mt-2 flex-1">
-                    {dayEvents.slice(0, 2).map((ev) => {
+                    {dayEvents.slice(0, 3).map((ev) => {
                       const tag = tags.find((t) => t.id === ev.tag_id);
                       return (
-                        <div
-                          key={ev.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditFormFromDesktopGrid(ev, day);
-                          }}
-                          className="pl-2.5 pr-2 py-1.5 rounded-lg flex flex-col justify-center border cursor-pointer shrink-0 transition-transform hover:-translate-y-[1px]"
-                          style={{
-                            backgroundColor: tag
-                              ? `${tag.color}15`
-                              : "rgba(255,255,255,0.03)",
-                            borderColor: tag
-                              ? `${tag.color}30`
-                              : "rgba(255,255,255,0.08)",
-                            borderLeft: `3.5px solid ${tag ? tag.color : "rgba(255,255,255,0.3)"}`,
-                          }}
-                        >
-                          <span
-                            className="font-mono text-[11px] font-bold tracking-wide leading-none mb-[2px]"
-                            style={{
-                              color: tag ? tag.color : "rgba(255,255,255,0.7)",
-                            }}
-                          >
-                            {ev.time}
-                          </span>
-                          <span className="text-[13px] font-semibold leading-tight line-clamp-2 text-white/90">
-                            {ev.title}
-                          </span>
-                        </div>
+                        <Popover key={ev.id}>
+                          <PopoverTrigger asChild>
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="pl-2.5 pr-2 py-1.5 rounded-lg flex flex-col justify-center border cursor-pointer shrink-0 transition-transform hover:-translate-y-[1px]"
+                              style={{
+                                backgroundColor: ev.is_done
+                                  ? "rgba(107,227,164,0.08)"
+                                  : tag
+                                    ? `${tag.color}15`
+                                    : "rgba(255,255,255,0.03)",
+                                borderColor: ev.is_done
+                                  ? "rgba(107,227,164,0.2)"
+                                  : tag
+                                    ? `${tag.color}30`
+                                    : "rgba(255,255,255,0.08)",
+                                borderLeft: `3.5px solid ${ev.is_done ? "#6BE3A4" : tag ? tag.color : "rgba(255,255,255,0.3)"}`,
+                                opacity: ev.is_done ? 0.6 : 1,
+                              }}
+                            >
+                              <span
+                                className="font-mono text-[11px] font-bold tracking-wide leading-none mb-[2px] flex items-center gap-1"
+                                style={{
+                                  color: ev.is_done
+                                    ? "#6BE3A4"
+                                    : tag
+                                      ? tag.color
+                                      : "rgba(255,255,255,0.7)",
+                                }}
+                              >
+                                {ev.time}
+                                {ev.description && (
+                                  <AlignLeft className="w-2.5 h-2.5 opacity-70" />
+                                )}
+                              </span>
+                              <span
+                                className={`text-[13px] font-semibold leading-tight line-clamp-2 ${ev.is_done ? "text-white/50 line-through" : "text-white/90"}`}
+                              >
+                                {ev.title}
+                              </span>
+                            </div>
+                          </PopoverTrigger>
+                          {renderEventPopup(ev, tag, (e) =>
+                            openEditFormFromDesktopGrid(e, day),
+                          )}
+                        </Popover>
                       );
                     })}
-                    {dayEvents.length > 2 && (
+                    {dayEvents.length > 3 && (
                       <div className="mt-0.5 w-full text-center text-[11px] font-bold text-white/40 hover:text-white/70 hover:bg-white/10 bg-white/5 rounded-md py-1.5 border border-white/5 transition-colors cursor-pointer">
-                        +{dayEvents.length - 2} więcej...
+                        +{dayEvents.length - 3} więcej...
                       </div>
                     )}
                   </div>
@@ -633,7 +824,7 @@ export default function CalendarPage() {
               {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="px-6 pb-10">{EventFormContent()}</div>
+          <div className="px-6 pb-10">{renderEventFormContent()}</div>
         </DrawerContent>
       </Drawer>
 
@@ -658,8 +849,8 @@ export default function CalendarPage() {
             </DialogHeader>
             {!addEventOpen ? (
               <div className="space-y-6">
-                <div className="min-h-[150px] max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                  <AgendaList eventsList={selectedDayEvents} />
+                <div className="min-h-[150px] max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                  {renderAgendaList(selectedDayEvents)}
                 </div>
                 <button
                   onClick={() => openAddForm(selectedDay)}
@@ -687,7 +878,7 @@ export default function CalendarPage() {
                     {editingEventId ? "Edytuj wydarzenie" : "Nowe wydarzenie"}
                   </h3>
                 </div>
-                {EventFormContent()}
+                {renderEventFormContent()}
               </div>
             )}
           </DialogContent>
