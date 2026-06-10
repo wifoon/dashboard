@@ -27,8 +27,8 @@ import {
   Clock,
   Edit3,
 } from "lucide-react";
-
-import { getCalData, saveCalData } from "@/lib/calendarStorage";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { calendarApi } from "@/lib/api";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Dialog,
@@ -61,10 +61,8 @@ const PALETTE = [
   "#f2c063",
 ];
 
-// --- Zbudowany z Shadcn Time Picker ---
 const ShadcnTimePicker = ({ value, onChange }) => {
   const [h, m] = (value || "12:00").split(":");
-
   const hours = Array.from({ length: 24 }, (_, i) =>
     i.toString().padStart(2, "0"),
   );
@@ -90,9 +88,7 @@ const ShadcnTimePicker = ({ value, onChange }) => {
           ))}
         </SelectContent>
       </Select>
-
       <span className="text-white/30 font-bold text-lg pb-1">:</span>
-
       <Select value={m} onValueChange={(newM) => onChange(`${h}:${newM}`)}>
         <SelectTrigger className="w-full h-12 bg-black/40 border-white/10 text-white rounded-xl focus:ring-[#6BE3A4] outline-none shadow-none text-base">
           <SelectValue placeholder="Minuta" />
@@ -115,9 +111,9 @@ const ShadcnTimePicker = ({ value, onChange }) => {
 
 export default function CalendarPage() {
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date());
-  const [data, setData] = useState({ events: [], tags: [] });
 
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [addEventOpen, setAddEventOpen] = useState(false);
@@ -127,7 +123,7 @@ export default function CalendarPage() {
   const [newEvent, setNewEvent] = useState({
     time: "12:00",
     title: "",
-    tagId: "",
+    tag_id: "",
   });
   const [newTag, setNewTag] = useState({ name: "", color: PALETTE[0] });
 
@@ -137,23 +133,49 @@ export default function CalendarPage() {
     containScroll: "trimSnaps",
   });
 
-  // Dodano nasłuchiwanie "storage-synced", żeby strona automatycznie się odświeżała przy danych z chmury
-  useEffect(() => {
-    setData(getCalData());
-    const handler = () => setData(getCalData());
-    window.addEventListener("calendar-changed", handler);
-    window.addEventListener("storage-synced", handler);
-    return () => {
-      window.removeEventListener("calendar-changed", handler);
-      window.removeEventListener("storage-synced", handler);
-    };
-  }, []);
+  // POBIERANIE DANYCH
+  const { data: events = [], isLoading: loadingEvents } = useQuery({
+    queryKey: ["calendar_events"],
+    queryFn: calendarApi.fetchEvents,
+  });
+  const { data: tags = [], isLoading: loadingTags } = useQuery({
+    queryKey: ["calendar_tags"],
+    queryFn: calendarApi.fetchTags,
+  });
+
+  // MUTACJE
+  const createEventMut = useMutation({
+    mutationFn: calendarApi.createEvent,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
+  });
+  const updateEventMut = useMutation({
+    mutationFn: calendarApi.updateEvent,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
+  });
+  const deleteEventMut = useMutation({
+    mutationFn: calendarApi.deleteEvent,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
+  });
+  const createTagMut = useMutation({
+    mutationFn: calendarApi.createTag,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["calendar_tags"] }),
+  });
+  const deleteTagMut = useMutation({
+    mutationFn: calendarApi.deleteTag,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar_tags"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
+    },
+  });
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
-
   const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
 
   const scrollToSelected = useCallback(() => {
@@ -166,87 +188,61 @@ export default function CalendarPage() {
     scrollToSelected();
   }, [scrollToSelected]);
 
-  const selectedDayEvents = data.events
+  const selectedDayEvents = events
     .filter((e) => e.date === format(selectedDay, "yyyy-MM-dd"))
     .sort((a, b) => a.time.localeCompare(b.time));
 
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return;
+    const payload = {
+      date: format(selectedDay, "yyyy-MM-dd"),
+      time: newEvent.time,
+      title: newEvent.title.trim(),
+      tag_id: newEvent.tag_id || null,
+    };
 
     if (editingEventId) {
-      const updatedEvents = data.events.map((e) =>
-        e.id === editingEventId
-          ? {
-              ...e,
-              time: newEvent.time,
-              title: newEvent.title.trim(),
-              tagId: newEvent.tagId || null,
-            }
-          : e,
-      );
-      saveCalData({ ...data, events: updatedEvents });
+      updateEventMut.mutate({ id: editingEventId, updates: payload });
     } else {
-      const ev = {
-        id: "ev_" + Date.now(),
-        date: format(selectedDay, "yyyy-MM-dd"),
-        time: newEvent.time,
-        title: newEvent.title.trim(),
-        tagId:
-          newEvent.tagId || (data.tags.length > 0 ? data.tags[0].id : null),
-      };
-      saveCalData({ ...data, events: [...data.events, ev] });
+      createEventMut.mutate(payload);
     }
 
-    setNewEvent({ time: "12:00", title: "", tagId: "" });
+    setNewEvent({ time: "12:00", title: "", tag_id: "" });
     setEditingEventId(null);
     setAddEventOpen(false);
   };
 
   const handleDeleteEvent = (id) => {
-    if (!confirm("Usunąć wydarzenie?")) return;
-    saveCalData({ ...data, events: data.events.filter((e) => e.id !== id) });
+    if (confirm("Usunąć wydarzenie?")) deleteEventMut.mutate(id);
   };
 
   const handleAddTag = () => {
     if (!newTag.name.trim()) return;
-    const t = {
-      id: "tag_" + Date.now(),
-      name: newTag.name.trim(),
-      color: newTag.color,
-    };
-    saveCalData({ ...data, tags: [...data.tags, t] });
+    createTagMut.mutate({ name: newTag.name.trim(), color: newTag.color });
     setNewTag({ name: "", color: PALETTE[0] });
   };
 
   const handleDeleteTag = (id) => {
-    if (!confirm("Usunąć tę kategorię? Powiązane wydarzenia stracą kolor."))
-      return;
-    saveCalData({
-      ...data,
-      tags: data.tags.filter((t) => t.id !== id),
-      events: data.events.map((e) =>
-        e.tagId === id ? { ...e, tagId: null } : e,
-      ),
-    });
+    if (confirm("Usunąć tę kategorię?")) deleteTagMut.mutate(id);
   };
 
   const openAddForm = (day) => {
     setSelectedDay(day);
     setEditingEventId(null);
-    setNewEvent({ time: "12:00", title: "", tagId: data.tags[0]?.id || "" });
+    setNewEvent({ time: "12:00", title: "", tag_id: tags[0]?.id || "" });
     setAddEventOpen(true);
   };
 
   const openEditForm = (ev) => {
     setEditingEventId(ev.id);
-    setNewEvent({ time: ev.time, title: ev.title, tagId: ev.tagId || "" });
+    setNewEvent({ time: ev.time, title: ev.title, tag_id: ev.tag_id || "" });
     setAddEventOpen(true);
   };
 
   const openEditFormFromDesktopGrid = (ev, day) => {
     setSelectedDay(day);
     setEditingEventId(ev.id);
-    setNewEvent({ time: ev.time, title: ev.title, tagId: ev.tagId || "" });
+    setNewEvent({ time: ev.time, title: ev.title, tag_id: ev.tag_id || "" });
     setDetailsModalOpen(true);
     setAddEventOpen(true);
   };
@@ -269,7 +265,6 @@ export default function CalendarPage() {
             autoFocus={!isMobile}
           />
         </div>
-
         <div>
           <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
             Godzina
@@ -280,39 +275,38 @@ export default function CalendarPage() {
           />
         </div>
       </div>
-
       <div>
         <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-2 ml-1">
           Kategoria (Tag)
         </div>
         <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto custom-scrollbar bg-black/20 p-2 rounded-2xl border border-white/5">
           <button
-            onClick={() => setNewEvent({ ...newEvent, tagId: "" })}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${!newEvent.tagId ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
+            onClick={() => setNewEvent({ ...newEvent, tag_id: "" })}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${!newEvent.tag_id ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
           >
             <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20" />
             <span
-              className={`text-[13px] font-bold tracking-wide ${!newEvent.tagId ? "text-white" : "text-white/50"}`}
+              className={`text-[13px] font-bold tracking-wide ${!newEvent.tag_id ? "text-white" : "text-white/50"}`}
             >
               Brak kategorii
             </span>
           </button>
-          {data.tags.map((t) => (
+          {tags.map((t) => (
             <button
               key={t.id}
-              onClick={() => setNewEvent({ ...newEvent, tagId: t.id })}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${newEvent.tagId === t.id ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
+              onClick={() => setNewEvent({ ...newEvent, tag_id: t.id })}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${newEvent.tag_id === t.id ? "bg-white/10 border-white/20 shadow-md" : "bg-transparent border-transparent hover:bg-white/5"}`}
             >
               <div
                 className="w-3.5 h-3.5 rounded-full ring-2 ring-white/10"
                 style={{
                   backgroundColor: t.color,
                   boxShadow:
-                    newEvent.tagId === t.id ? `0 0 12px ${t.color}` : "none",
+                    newEvent.tag_id === t.id ? `0 0 12px ${t.color}` : "none",
                 }}
               />
               <span
-                className={`text-[13px] font-bold tracking-wide ${newEvent.tagId === t.id ? "text-white" : "text-white/50"}`}
+                className={`text-[13px] font-bold tracking-wide ${newEvent.tag_id === t.id ? "text-white" : "text-white/50"}`}
               >
                 {t.name}
               </span>
@@ -320,7 +314,6 @@ export default function CalendarPage() {
           ))}
         </div>
       </div>
-
       <div className="flex gap-3 pt-5 border-t border-white/10">
         <button
           onClick={() => {
@@ -347,15 +340,15 @@ export default function CalendarPage() {
     </div>
   );
 
-  const AgendaList = ({ events }) => (
+  const AgendaList = ({ eventsList }) => (
     <div className="flex flex-col gap-3">
-      {events.length === 0 ? (
+      {eventsList.length === 0 ? (
         <div className="text-center py-16 text-white/30 text-sm border border-dashed border-white/10 rounded-3xl bg-black/20">
           Brak wydarzeń.
         </div>
       ) : (
-        events.map((ev) => {
-          const tag = data.tags.find((t) => t.id === ev.tagId);
+        eventsList.map((ev) => {
+          const tag = tags.find((t) => t.id === ev.tag_id);
           return (
             <div
               key={ev.id}
@@ -408,9 +401,16 @@ export default function CalendarPage() {
     </div>
   );
 
+  if (loadingEvents || loadingTags) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a0b]">
+        <div className="w-8 h-8 border-4 border-white/20 border-t-[#6BE3A4] rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-[1200px] mx-auto pt-[max(16px,env(safe-area-inset-top))] px-3 md:px-5 pb-32 md:pb-0 relative z-10 md:h-[calc(100vh-140px)] flex flex-col">
-      {/* HEADER */}
       <div className="flex items-center justify-between mb-5 shrink-0">
         <h1
           className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
@@ -432,9 +432,7 @@ export default function CalendarPage() {
         </button>
       </div>
 
-      {/* GŁÓWNY KONTENER KALENDARZA */}
       <div className="rounded-[32px] md:p-6 md:bg-white/[0.04] md:backdrop-blur-xl md:shadow-[0_12px_40px_rgba(0,0,0,0.45)] md:border md:border-white/5 flex-1 flex flex-col min-h-0">
-        {/* NAWIGACJA MIESIĄCA */}
         <div className="flex items-center justify-between mb-4 md:mb-6 px-2 md:px-0 shrink-0">
           <div className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">
             {format(currentDate, "MMMM yyyy", { locale: pl })}
@@ -465,16 +463,13 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* =========================================
-            WIDOK MOBILE
-            ========================================= */}
         <div className="block md:hidden">
           <div className="overflow-hidden -mx-3 px-3 mb-6" ref={emblaRef}>
             <div className="flex gap-2">
               {daysInMonth.map((day) => {
                 const isSelected = isSameDay(day, selectedDay);
                 const isTodayDate = isToday(day);
-                const dayEventsCount = data.events.filter(
+                const dayEventsCount = events.filter(
                   (e) => e.date === format(day, "yyyy-MM-dd"),
                 ).length;
 
@@ -495,7 +490,6 @@ export default function CalendarPage() {
                         }}
                       />
                     )}
-
                     <span
                       className={`text-[11px] font-bold uppercase z-10 ${isSelected ? "text-white" : "text-white/50"}`}
                     >
@@ -506,7 +500,6 @@ export default function CalendarPage() {
                     >
                       {format(day, "d")}
                     </span>
-
                     <div className="h-1.5 mt-1 z-10 flex gap-1">
                       {dayEventsCount > 0 && (
                         <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
@@ -517,20 +510,14 @@ export default function CalendarPage() {
               })}
             </div>
           </div>
-
           <div className="mb-6 px-1">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-white/50 tracking-widest uppercase">
-                Plan na {format(selectedDay, "d MMMM", { locale: pl })}
-              </h2>
-            </div>
-            <AgendaList events={selectedDayEvents} />
+            <h2 className="text-sm font-bold text-white/50 tracking-widest uppercase mb-4">
+              Plan na {format(selectedDay, "d MMMM", { locale: pl })}
+            </h2>
+            <AgendaList eventsList={selectedDayEvents} />
           </div>
-
           <button
-            onClick={() => {
-              openAddForm(selectedDay);
-            }}
+            onClick={() => openAddForm(selectedDay)}
             className="w-full py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
             style={{
               background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",
@@ -541,9 +528,6 @@ export default function CalendarPage() {
           </button>
         </div>
 
-        {/* =========================================
-            WIDOK DESKTOP
-            ========================================= */}
         <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="grid grid-cols-7 gap-2 mb-2 shrink-0 pr-2">
             {["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"].map((d) => (
@@ -555,14 +539,13 @@ export default function CalendarPage() {
               </div>
             ))}
           </div>
-
           <div
             className="grid grid-cols-7 gap-2 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2 content-start"
             style={{ gridAutoRows: "minmax(90px, auto)" }}
           >
             {daysInMonth.map((day) => {
               const dateStr = format(day, "yyyy-MM-dd");
-              const dayEvents = data.events
+              const dayEvents = events
                 .filter((e) => e.date === dateStr)
                 .sort((a, b) => a.time.localeCompare(b.time));
               const isCurrentMonth = isSameMonth(day, monthStart);
@@ -575,9 +558,7 @@ export default function CalendarPage() {
                     setSelectedDay(day);
                     setDetailsModalOpen(true);
                   }}
-                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative transition-colors
-                    ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06]" : "bg-transparent border-transparent opacity-10 pointer-events-none"}
-                  `}
+                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative transition-colors ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06]" : "bg-transparent border-transparent opacity-10 pointer-events-none"}`}
                 >
                   <div
                     className={`text-[12px] font-bold flex justify-between items-center shrink-0 ${isTodayDate ? "text-black" : "text-white/60"}`}
@@ -592,10 +573,9 @@ export default function CalendarPage() {
                       {format(day, "d")}
                     </span>
                   </div>
-
                   <div className="flex flex-col gap-1.5 mt-2 flex-1">
                     {dayEvents.slice(0, 2).map((ev) => {
-                      const tag = data.tags.find((t) => t.id === ev.tagId);
+                      const tag = tags.find((t) => t.id === ev.tag_id);
                       return (
                         <div
                           key={ev.id}
@@ -628,7 +608,6 @@ export default function CalendarPage() {
                         </div>
                       );
                     })}
-
                     {dayEvents.length > 2 && (
                       <div className="mt-0.5 w-full text-center text-[11px] font-bold text-white/40 hover:text-white/70 hover:bg-white/10 bg-white/5 rounded-md py-1.5 border border-white/5 transition-colors cursor-pointer">
                         +{dayEvents.length - 2} więcej...
@@ -641,10 +620,6 @@ export default function CalendarPage() {
           </div>
         </div>
       </div>
-
-      {/* =========================================
-          MODALE I SZUFLADY
-          ========================================= */}
 
       <Drawer open={addEventOpen && isMobile} onOpenChange={setAddEventOpen}>
         <DrawerContent className="bg-[#111113] border-white/10 text-white rounded-t-[32px]">
@@ -681,16 +656,13 @@ export default function CalendarPage() {
                   format(selectedDay, "EEEE, dd MMMM", { locale: pl })}
               </DialogTitle>
             </DialogHeader>
-
             {!addEventOpen ? (
               <div className="space-y-6">
                 <div className="min-h-[150px] max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                  <AgendaList events={selectedDayEvents} />
+                  <AgendaList eventsList={selectedDayEvents} />
                 </div>
                 <button
-                  onClick={() => {
-                    openAddForm(selectedDay);
-                  }}
+                  onClick={() => openAddForm(selectedDay)}
                   className="w-full py-[11px] rounded-xl text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
                   style={{
                     background:
@@ -731,12 +703,12 @@ export default function CalendarPage() {
           </DialogHeader>
           <div className="space-y-6">
             <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
-              {data.tags.length === 0 && (
+              {tags.length === 0 && (
                 <div className="text-sm text-white/40 italic text-center py-4">
                   Brak zapisanych tagów.
                 </div>
               )}
-              {data.tags.map((t) => (
+              {tags.map((t) => (
                 <div
                   key={t.id}
                   className="flex items-center justify-between bg-black/40 border border-white/5 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors group"
@@ -762,7 +734,6 @@ export default function CalendarPage() {
                 </div>
               ))}
             </div>
-
             <div className="pt-6 border-t border-white/10">
               <div className="text-[11px] font-bold tracking-[0.1em] uppercase text-white/50 mb-3 ml-1">
                 Dodaj Nową Kategorie

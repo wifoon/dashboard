@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Pencil, LineChart as ChartIcon, Trash2 } from "lucide-react";
+import { Plus, Pencil, LineChart, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gymApi } from "@/lib/api";
 import { CONFIG } from "@/utils/gymConfig";
 import ExerciseDialog from "./modals/ExerciseDialog";
 import ExerciseProgressDialog from "./modals/ExerciseProgressDialog";
 
 export default function WorkoutLogger({ state, setState }) {
+  const queryClient = useQueryClient();
   const [activeRep, setActiveRep] = useState(8);
   const [weightInput, setWeightInput] = useState("");
   const [exModalMode, setExModalMode] = useState(null);
   const [chartModalOpen, setChartModalOpen] = useState(false);
 
   const filteredExercises = useMemo(
-    () => state.exercises.filter((e) => e.day === state.filterDay),
+    () => state.exercises.filter((e) => e.day_id === state.filterDay),
     [state.exercises, state.filterDay],
   );
 
@@ -29,53 +32,76 @@ export default function WorkoutLogger({ state, setState }) {
       setWeightInput(
         (currentLogs.length
           ? currentLogs[currentLogs.length - 1].weight
-          : currentEx.startWeight || 0
+          : currentEx.start_weight || 0
         ).toString(),
       );
     }
-  }, [currentEx?.id]);
+  }, [currentEx?.id, currentLogs.length]);
+
+  // 🚀 OPTYMISTYCZNA MUTACJA LOGOWANIA SERII
+  const logSetMutation = useMutation({
+    mutationFn: gymApi.logSet,
+    onMutate: async (newSet) => {
+      await queryClient.cancelQueries({ queryKey: ["gymState"] });
+      const previousState = queryClient.getQueryData(["gymState"]);
+
+      queryClient.setQueryData(["gymState"], (old) => {
+        if (!old) return old;
+        const updatedLogs = { ...old.logs };
+        if (!updatedLogs[newSet.exerciseId])
+          updatedLogs[newSet.exerciseId] = [];
+        updatedLogs[newSet.exerciseId] = [
+          ...updatedLogs[newSet.exerciseId],
+          {
+            id: "temp-" + Date.now(),
+            weight: newSet.weight,
+            reps: newSet.reps,
+            date: new Date().toISOString(),
+          },
+        ];
+        return { ...old, logs: updatedLogs };
+      });
+      return { previousState };
+    },
+    onError: (err, newSet, context) => {
+      if (context?.previousState)
+        queryClient.setQueryData(["gymState"], context.previousState);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["gymState"] }),
+  });
+
+  const deleteExerciseMutation = useMutation({
+    mutationFn: gymApi.deleteExercise,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gymState"] });
+      setState({ ...state, currentEx: null });
+    },
+  });
 
   const handleLogSet = () => {
     if (!currentEx) return;
     const w = currentEx.bw ? 0 : parseFloat(weightInput);
     if (!currentEx.bw && (isNaN(w) || w <= 0)) return;
 
-    setState((prev) => ({
-      ...prev,
-      logs: {
-        ...prev.logs,
-        [currentEx.id]: [
-          ...(prev.logs[currentEx.id] || []),
-          { weight: w, reps: activeRep, date: new Date().toISOString() },
-        ],
-      },
-    }));
+    logSetMutation.mutate({
+      exerciseId: currentEx.id,
+      weight: w,
+      reps: activeRep,
+    });
   };
 
   const handleDeleteExercise = () => {
     if (!currentEx) return;
-    if (
-      confirm(
-        `Czy na pewno chcesz usunąć ćwiczenie "${currentEx.name}" ze swojego planu?`,
-      )
-    ) {
-      setState((prev) => {
-        const nextExs = prev.exercises.filter((e) => e.id !== currentEx.id);
-        const remainingInDay = nextExs.filter((e) => e.day === prev.filterDay);
-        return {
-          ...prev,
-          exercises: nextExs,
-          currentEx: remainingInDay.length > 0 ? remainingInDay[0].id : null,
-        };
-      });
+    if (confirm(`Czy na pewno chcesz usunąć ćwiczenie "${currentEx.name}"?`)) {
+      deleteExerciseMutation.mutate(currentEx.id);
     }
   };
 
   const getRx = () => {
     if (!currentEx || !currentLogs.length) return null;
     const { weight, reps } = currentLogs[currentLogs.length - 1];
-    const { repMin, repMax, step, bw } = currentEx;
-    const upgradeAt = Math.min(CONFIG.upgradeAtReps, repMax);
+    const { rep_min, rep_max, step, bw } = currentEx;
+    const upgradeAt = Math.min(CONFIG.upgradeAtReps, rep_max);
 
     if (bw) {
       if (reps >= upgradeAt)
@@ -84,7 +110,7 @@ export default function WorkoutLogger({ state, setState }) {
           tag: "Więcej",
           text: `Świetnie! Następnym razem spróbuj ${reps + 1} powtórzeń.`,
         };
-      if (reps >= repMin)
+      if (reps >= rep_min)
         return {
           type: "hold",
           tag: "Dodaj powtórzenie",
@@ -93,25 +119,25 @@ export default function WorkoutLogger({ state, setState }) {
       return {
         type: "hold",
         tag: "Powtórz",
-        text: `Nie udało się osiągnąć celu. Powtarzaj, aż dojdziesz do ${repMin}+.`,
+        text: `Nie udało się osiągnąć celu. Powtarzaj, aż dojdziesz do ${rep_min}+.`,
       };
     }
     if (reps >= upgradeAt)
       return {
         type: "up",
         tag: "Dodaj ciężar",
-        text: `Udało się ${reps} powtórzeń! Następnym razem dodaj ${step}${state.units}.`,
+        text: `Udało się ${reps} powtórzeń! Następnym razem dodaj ${step}kg.`,
       };
-    if (reps >= repMin)
+    if (reps >= rep_min)
       return {
         type: "hold",
         tag: "Dodaj powtórzenie",
-        text: `${reps} powtórzeń. Zostań przy ${weight}${state.units} i spróbuj ${reps + 1}.`,
+        text: `${reps} powtórzeń. Zostań przy ${weight}kg i spróbuj ${reps + 1}.`,
       };
     return {
       type: "hold",
       tag: "Powtórz",
-      text: `Nie udało się osiągnąć celu. Powtarzaj ${weight}${state.units}, aż zrobisz ${repMin}+ poprawnie.`,
+      text: `Nie udało się osiągnąć celu. Powtarzaj ${weight}kg, aż zrobisz ${rep_min}+ poprawnie.`,
     };
   };
 
@@ -141,10 +167,9 @@ export default function WorkoutLogger({ state, setState }) {
         ))}
       </div>
 
-      {/* Zmieniony układ responsywny - na mobilkach przyciski lądują pod selectem */}
       <div className="flex flex-col sm:flex-row gap-2.5 mb-8">
         <select
-          className="flex-1 w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white outline-none focus:border-white/30 appearance-none"
+          className="flex-1 w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white outline-none"
           value={state.currentEx || ""}
           onChange={(e) => setState({ ...state, currentEx: e.target.value })}
         >
@@ -163,31 +188,27 @@ export default function WorkoutLogger({ state, setState }) {
             <>
               <button
                 onClick={() => setChartModalOpen(true)}
-                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-[#6BE3A4] transition-colors"
-                title="Wykres postępów"
+                className="w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-[#6BE3A4] transition-colors"
               >
-                <ChartIcon className="w-5 h-5" />
+                <LineChart className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setExModalMode("edit")}
-                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
-                title="Edytuj ćwiczenie"
+                className="w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
               >
                 <Pencil className="w-5 h-5" />
               </button>
               <button
                 onClick={handleDeleteExercise}
-                className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-[#f87171]/20 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 hover:text-[#f87171] transition-colors group"
-                title="Usuń ćwiczenie"
+                className="w-14 h-14 bg-white/5 hover:bg-[#f87171]/20 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 hover:text-[#f87171] transition-colors"
               >
-                <Trash2 className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                <Trash2 className="w-5 h-5" />
               </button>
             </>
           )}
           <button
             onClick={() => setExModalMode("add")}
-            className="flex-1 sm:flex-none sm:w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
-            title="Dodaj nowe ćwiczenie"
+            className="w-14 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-white/70 transition-colors"
           >
             <Plus className="w-6 h-6" />
           </button>
@@ -203,7 +224,7 @@ export default function WorkoutLogger({ state, setState }) {
           ) : (
             <div className="mb-6">
               <div className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1">
-                Obciążenie ({state.units})
+                Obciążenie (kg)
               </div>
               <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-2xl h-[60px] p-1.5 shadow-inner">
                 <button
@@ -215,19 +236,16 @@ export default function WorkoutLogger({ state, setState }) {
                       ).toString(),
                     )
                   }
-                  className="w-14 h-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl text-2xl font-bold transition-all active:scale-95"
+                  className="w-14 h-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-white/70 rounded-xl text-2xl font-bold"
                 >
                   −
                 </button>
-                <div className="flex-1 flex items-center justify-center relative">
-                  <input
-                    type="number"
-                    value={weightInput}
-                    onChange={(e) => setWeightInput(e.target.value)}
-                    className="w-full text-center text-2xl font-black bg-transparent text-white outline-none"
-                    style={{ appearance: "none", MozAppearance: "textfield" }}
-                  />
-                </div>
+                <input
+                  type="number"
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  className="w-full text-center text-2xl font-black bg-transparent text-white outline-none"
+                />
                 <button
                   onClick={() =>
                     setWeightInput(
@@ -236,7 +254,7 @@ export default function WorkoutLogger({ state, setState }) {
                       ).toString(),
                     )
                   }
-                  className="w-14 h-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl text-2xl font-bold transition-all active:scale-95"
+                  className="w-14 h-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-white/70 rounded-xl text-2xl font-bold"
                 >
                   +
                 </button>
@@ -251,12 +269,12 @@ export default function WorkoutLogger({ state, setState }) {
             <div className="grid grid-cols-5 gap-2">
               {Array.from(
                 { length: 10 },
-                (_, i) => Math.max(1, currentEx.repMin || 4) + i,
+                (_, i) => Math.max(1, currentEx.rep_min || 4) + i,
               ).map((r) => (
                 <button
                   key={r}
                   onClick={() => setActiveRep(r)}
-                  className={`h-12 rounded-xl text-[15px] font-bold transition-all border ${activeRep === r ? "bg-white text-black border-transparent shadow-md" : "bg-black/40 border-white/10 text-white/60 hover:bg-white/5 hover:text-white"}`}
+                  className={`h-12 rounded-xl text-[15px] font-bold transition-all border ${activeRep === r ? "bg-white text-black border-transparent shadow-md" : "bg-black/40 border-white/10 text-white/60 hover:bg-white/5"}`}
                 >
                   {r}
                 </button>
@@ -265,7 +283,7 @@ export default function WorkoutLogger({ state, setState }) {
           </div>
           <button
             onClick={handleLogSet}
-            className="w-full h-14 rounded-2xl bg-gradient-to-b from-white to-[#E8E5DD] text-black font-bold text-[15px] shadow-[0_4px_14px_rgba(0,0,0,0.15)] hover:shadow-[0_6px_20px_rgba(255,255,255,0.2)] hover:-translate-y-0.5 active:translate-y-0 transition-all"
+            className="w-full h-14 rounded-2xl bg-gradient-to-b from-white to-[#E8E5DD] text-black font-bold text-[15px] transition-all"
           >
             Zapisz Serię
           </button>
@@ -273,16 +291,12 @@ export default function WorkoutLogger({ state, setState }) {
       )}
 
       {rx && (
-        <div
-          className={`mt-auto rounded-2xl p-5 border ${rx.type === "up" ? "bg-[#6BE3A4]/10 border-[#6BE3A4]/20" : "bg-white/5 border-white/10"}`}
-        >
+        <div className="mt-auto rounded-2xl p-5 border bg-white/5 border-white/10">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/50">
               Trener - Następna Seria
             </span>
-            <span
-              className={`px-2.5 py-1 rounded-md text-[9px] font-bold tracking-wider uppercase ${rx.type === "up" ? "bg-[#6BE3A4]/20 text-[#6BE3A4]" : "bg-white/10 text-white/70"}`}
-            >
+            <span className="px-2.5 py-1 rounded-md text-[9px] font-bold tracking-wider uppercase bg-white/10 text-white/70">
               {rx.tag}
             </span>
           </div>
@@ -296,16 +310,18 @@ export default function WorkoutLogger({ state, setState }) {
         state={state}
         setState={setState}
         mode={exModalMode}
-        exToEdit={currentEx}
+        exToEdit={exModalMode === "edit" ? currentEx : null}
         onClose={() => setExModalMode(null)}
       />
-      <ExerciseProgressDialog
-        open={chartModalOpen}
-        setOpen={setChartModalOpen}
-        ex={currentEx}
-        logs={currentLogs}
-        units={state.units}
-      />
+      {currentEx && (
+        <ExerciseProgressDialog
+          open={chartModalOpen}
+          setOpen={setChartModalOpen}
+          ex={currentEx}
+          logs={currentLogs}
+          units={state.units}
+        />
+      )}
     </div>
   );
 }

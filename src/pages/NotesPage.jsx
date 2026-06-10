@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { getNotes, saveNotes, generateNoteId } from "@/lib/notesStorage";
+import React, { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { notesApi } from "@/lib/api";
 import {
   Search,
   Plus,
@@ -9,11 +10,9 @@ import {
   Check,
   AlertCircle,
   Pin,
-  Maximize2,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 
-// --- Komponent Lightbox do obrazków ---
 const ImageLightbox = ({ src, onClose }) => {
   if (!src) return null;
   return (
@@ -37,72 +36,80 @@ const ImageLightbox = ({ src, onClose }) => {
 };
 
 export default function NotesPage() {
-  const [notes, setNotes] = useState([]);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [editingNote, setEditingNote] = useState(null);
   const [viewingNote, setViewingNote] = useState(null);
   const [newTag, setNewTag] = useState("");
   const [zoomedImg, setZoomedImg] = useState(null);
 
-  useEffect(() => {
-    setNotes(getNotes());
-    const handler = () => setNotes(getNotes());
-    window.addEventListener("notes-changed", handler);
-    window.addEventListener("storage-synced", handler);
-    return () => {
-      window.removeEventListener("notes-changed", handler);
-      window.removeEventListener("storage-synced", handler);
-    };
-  }, []);
+  // Pobieranie danych z bazy
+  const { data: notes = [], isLoading } = useQuery({
+    queryKey: ["notes"],
+    queryFn: notesApi.fetchNotes,
+  });
+
+  // Mutacje
+  const createMutation = useMutation({
+    mutationFn: notesApi.createNote,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: notesApi.updateNote,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: notesApi.deleteNote,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
 
   const sortedNotes = useMemo(() => {
-    return [...notes]
-      .filter(
-        (n) =>
-          n.title.toLowerCase().includes(search.toLowerCase()) ||
-          n.content.toLowerCase().includes(search.toLowerCase()) ||
-          n.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase())),
-      )
-      .sort((a, b) => {
-        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-        return b.createdAt - a.createdAt;
-      });
+    return notes.filter(
+      (n) =>
+        (n.title && n.title.toLowerCase().includes(search.toLowerCase())) ||
+        (n.content && n.content.toLowerCase().includes(search.toLowerCase())) ||
+        (n.tags &&
+          n.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))),
+    );
   }, [notes, search]);
 
   const handleCreateNote = () => {
     setEditingNote({
-      id: generateNoteId(),
       title: "",
       content: "",
       tags: [],
-      isPriority: false,
-      isPinned: false,
-      createdAt: Date.now(),
+      is_priority: false,
+      is_pinned: false,
     });
   };
 
   const handleSaveNote = () => {
     if (!editingNote) return;
-    const isExisting = notes.some((n) => n.id === editingNote.id);
-    const updatedNotes = isExisting
-      ? notes.map((n) => (n.id === editingNote.id ? editingNote : n))
-      : [editingNote, ...notes];
-    saveNotes(updatedNotes);
-    setViewingNote(editingNote); // Powrót do podglądu
+
+    if (editingNote.id) {
+      updateMutation.mutate({ id: editingNote.id, updates: editingNote });
+    } else {
+      createMutation.mutate(editingNote);
+    }
+
+    setViewingNote(editingNote);
     setEditingNote(null);
   };
 
   const handleDeleteNote = (id) => {
     if (!confirm("Na pewno chcesz usunąć tę notatkę?")) return;
-    saveNotes(notes.filter((n) => n.id !== id));
+    deleteMutation.mutate(id);
     if (editingNote?.id === id) setEditingNote(null);
     if (viewingNote?.id === id) setViewingNote(null);
   };
 
-  const togglePin = (id) => {
-    saveNotes(
-      notes.map((n) => (n.id === id ? { ...n, isPinned: !n.isPinned } : n)),
-    );
+  const togglePin = (note) => {
+    updateMutation.mutate({
+      id: note.id,
+      updates: { is_pinned: !note.is_pinned },
+    });
   };
 
   const compressImage = (file) => {
@@ -175,7 +182,14 @@ export default function NotesPage() {
     });
   };
 
-  // --- MODAL EDYCJI ---
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a0b]">
+        <div className="w-8 h-8 border-4 border-white/20 border-t-[#6BE3A4] rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   if (editingNote) {
     return (
       <div
@@ -201,10 +215,10 @@ export default function NotesPage() {
                 onClick={() =>
                   setEditingNote({
                     ...editingNote,
-                    isPinned: !editingNote.isPinned,
+                    is_pinned: !editingNote.is_pinned,
                   })
                 }
-                className={`p-3 rounded-xl transition-all border ${editingNote.isPinned ? "bg-[#f2c063]/20 border-[#f2c063]/40 text-[#f2c063] shadow-[0_0_15px_rgba(242,192,99,0.3)]" : "bg-white/5 border-transparent text-white/40 hover:bg-white/10"}`}
+                className={`p-3 rounded-xl transition-all border ${editingNote.is_pinned ? "bg-[#f2c063]/20 border-[#f2c063]/40 text-[#f2c063] shadow-[0_0_15px_rgba(242,192,99,0.3)]" : "bg-white/5 border-transparent text-white/40 hover:bg-white/10"}`}
                 title="Przypnij na górze"
               >
                 <Pin className="w-5 h-5" />
@@ -213,17 +227,16 @@ export default function NotesPage() {
                 onClick={() =>
                   setEditingNote({
                     ...editingNote,
-                    isPriority: !editingNote.isPriority,
+                    is_priority: !editingNote.is_priority,
                   })
                 }
-                className={`p-3 rounded-xl transition-all border ${editingNote.isPriority ? "bg-[#ef4444]/20 border-[#ef4444]/40 text-[#ef4444] shadow-[0_0_15px_rgba(239,68,68,0.3)]" : "bg-white/5 border-transparent text-white/40 hover:bg-white/10"}`}
+                className={`p-3 rounded-xl transition-all border ${editingNote.is_priority ? "bg-[#ef4444]/20 border-[#ef4444]/40 text-[#ef4444] shadow-[0_0_15px_rgba(239,68,68,0.3)]" : "bg-white/5 border-transparent text-white/40 hover:bg-white/10"}`}
                 title="Oznacz jako ważne (Priorytet)"
               >
                 <AlertCircle className="w-5 h-5" />
               </button>
             </div>
           </div>
-
           <form onSubmit={addTag} className="flex gap-2 mb-6">
             <div className="flex flex-wrap gap-2 items-center flex-1 bg-black/30 border border-white/10 rounded-xl p-2">
               {editingNote.tags?.map((tag) => (
@@ -247,8 +260,6 @@ export default function NotesPage() {
               />
             </div>
           </form>
-
-          {/* Nowoczesny Edytor Markdown */}
           <div
             data-color-mode="dark"
             className="flex-1 flex flex-col mb-4 min-h-[400px]"
@@ -271,13 +282,11 @@ export default function NotesPage() {
               }}
             />
           </div>
-
           <div className="flex justify-end gap-3 pt-6 mt-2 border-t border-white/10">
             <button
               onClick={() => {
                 setEditingNote(null);
-                if (!notes.find((n) => n.id === editingNote.id))
-                  setViewingNote(null);
+                setViewingNote(null);
               }}
               className="px-6 py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 text-white transition-all"
             >
@@ -301,7 +310,6 @@ export default function NotesPage() {
     );
   }
 
-  // --- MODAL PODGLĄDU ---
   if (viewingNote) {
     return (
       <div
@@ -319,10 +327,10 @@ export default function NotesPage() {
                   {viewingNote.title || "Bez tytułu"}
                 </h2>
                 <div className="flex items-center gap-1.5">
-                  {viewingNote.isPinned && (
+                  {viewingNote.is_pinned && (
                     <Pin className="w-5 h-5 text-[#f2c063]" />
                   )}
-                  {viewingNote.isPriority && (
+                  {viewingNote.is_priority && (
                     <AlertCircle className="w-5 h-5 text-[#ef4444]" />
                   )}
                 </div>
@@ -340,9 +348,7 @@ export default function NotesPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  setEditingNote(viewingNote);
-                }}
+                onClick={() => setEditingNote(viewingNote)}
                 className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"
               >
                 <Edit3 className="w-5 h-5" />
@@ -355,7 +361,6 @@ export default function NotesPage() {
               </button>
             </div>
           </div>
-
           <div
             data-color-mode="dark"
             className="flex-1 p-6 md:p-10 overflow-y-auto custom-scrollbar"
@@ -374,7 +379,6 @@ export default function NotesPage() {
     );
   }
 
-  // --- WIDOK LISTY NOTATEK ---
   return (
     <div className="w-full max-w-[1100px] mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">
       <div className="flex items-center justify-between mb-5 gap-4">
@@ -402,30 +406,6 @@ export default function NotesPage() {
         >
           <Plus className="w-4 h-4" /> Nowa notatka
         </button>
-      </div>
-
-      <div
-        className="flex items-center gap-3 mb-5"
-        style={{
-          fontSize: "10.5px",
-          fontWeight: 700,
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: "var(--text-tertiary)",
-        }}
-      >
-        <span
-          className="w-[18px] h-px"
-          style={{ background: "var(--text-tertiary)", opacity: 0.6 }}
-        />
-        <span>Wyszukiwarka</span>
-        <span
-          className="flex-1 h-px"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.08), transparent)",
-          }}
-        />
       </div>
 
       <div className="relative mb-8">
@@ -457,9 +437,9 @@ export default function NotesPage() {
             <div
               key={note.id}
               onClick={() => setViewingNote(note)}
-              className={`group rounded-3xl p-6 flex flex-col h-[240px] transition-all cursor-pointer hover:bg-white/[0.06] ${note.isPriority ? "note-priority" : ""}`}
+              className={`group rounded-3xl p-6 flex flex-col h-[240px] transition-all cursor-pointer hover:bg-white/[0.06] ${note.is_priority ? "note-priority" : ""}`}
               style={{
-                background: note.isPriority
+                background: note.is_priority
                   ? "linear-gradient(180deg, rgba(239,68,68,0.03) 0%, rgba(255,255,255,0.02) 100%)"
                   : "rgba(255,255,255,0.04)",
                 backdropFilter: "blur(24px) saturate(1.2)",
@@ -472,13 +452,12 @@ export default function NotesPage() {
                   {note.title || "Bez tytułu"}
                 </h3>
                 <div className="flex gap-1.5 shrink-0">
-                  {note.isPinned && <Pin className="w-4 h-4 text-[#f2c063]" />}
-                  {note.isPriority && (
+                  {note.is_pinned && <Pin className="w-4 h-4 text-[#f2c063]" />}
+                  {note.is_priority && (
                     <AlertCircle className="w-4 h-4 text-[#ef4444]" />
                   )}
                 </div>
               </div>
-
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {note.tags?.map((tag) => (
                   <span
@@ -489,7 +468,6 @@ export default function NotesPage() {
                   </span>
                 ))}
               </div>
-
               <div
                 data-color-mode="dark"
                 className="flex-1 text-[13px] text-white/50 line-clamp-4 overflow-hidden pointer-events-none mt-2"
@@ -503,18 +481,17 @@ export default function NotesPage() {
                   }}
                 />
               </div>
-
               <div className="flex items-center justify-between pt-4 mt-4 border-t border-white/5">
                 <span className="text-[10px] text-white/30 font-mono">
-                  {new Date(note.createdAt).toLocaleDateString()}
+                  {new Date(note.created_at).toLocaleDateString()}
                 </span>
                 <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      togglePin(note.id);
+                      togglePin(note);
                     }}
-                    className={`p-2 hover:bg-white/10 rounded-lg transition-colors ${note.isPinned ? "text-[#f2c063]" : "text-white/40 hover:text-white"}`}
+                    className={`p-2 hover:bg-white/10 rounded-lg transition-colors ${note.is_pinned ? "text-[#f2c063]" : "text-white/40 hover:text-white"}`}
                   >
                     <Pin className="w-4 h-4" />
                   </button>
@@ -533,7 +510,6 @@ export default function NotesPage() {
           ))}
         </div>
       )}
-      <ImageLightbox src={zoomedImg} onClose={() => setZoomedImg(null)} />
     </div>
   );
 }

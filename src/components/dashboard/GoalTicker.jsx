@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getTodayGoals } from "@/lib/goalStorage";
 
-export default function GoalTicker() {
+export default function GoalTicker({ todayGoals = [] }) {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState("0/0");
   const [current, setCurrent] = useState(null);
@@ -11,9 +10,8 @@ export default function GoalTicker() {
   const intervalRef = useRef(null);
 
   const buildItems = useCallback(() => {
-    const goals = getTodayGoals();
-    const total = goals.length;
-    const doneCount = goals.filter((g) => g.done).length;
+    const total = todayGoals.length;
+    const doneCount = todayGoals.filter((g) => g.done).length;
 
     let newItems;
     if (total === 0) {
@@ -24,21 +22,16 @@ export default function GoalTicker() {
         },
       ];
     } else if (doneCount === total) {
-      newItems = [
-        {
-          status: "done",
-          text: "✓ Wszystkie zadania wykonane.",
-        },
-      ];
+      newItems = [{ status: "done", text: "✓ Wszystkie zadania wykonane." }];
     } else {
-      newItems = goals
+      newItems = todayGoals
         .filter((g) => !g.done)
         .map((g) => ({ status: "pending", text: g.text }));
     }
 
     setMeta(`${doneCount}/${total}`);
     return newItems;
-  }, []);
+  }, [todayGoals]);
 
   const tick = useCallback(() => {
     const newItems = buildItems();
@@ -56,27 +49,13 @@ export default function GoalTicker() {
     cycleIdx.current = idx + 1;
   }, [buildItems, current]);
 
+  // Restart tickera za każdym razem gdy zmienią się propsy (nowe zadanie dodane z bazy)
   useEffect(() => {
     tick();
+    clearInterval(intervalRef.current);
     intervalRef.current = setInterval(tick, 5000);
     return () => clearInterval(intervalRef.current);
-  }, []);
-
-  useEffect(() => {
-    const handler = () => {
-      cycleIdx.current = 0;
-      isFirstRender.current = false;
-      const newItems = buildItems();
-      setItems(newItems);
-      const nextItem = newItems[0];
-      setLeaving(current);
-      setTimeout(() => setLeaving(null), 460);
-      setCurrent(nextItem);
-      cycleIdx.current = 1;
-    };
-    window.addEventListener("goals-changed", handler);
-    return () => window.removeEventListener("goals-changed", handler);
-  }, [buildItems, current]);
+  }, [todayGoals]);
 
   const statusGlyph = (status) => {
     if (status === "done") return "✓";
@@ -99,7 +78,6 @@ export default function GoalTicker() {
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
-        {/* Sweep animation */}
         <div
           className="absolute top-0 h-full pointer-events-none"
           style={{
@@ -110,7 +88,6 @@ export default function GoalTicker() {
           }}
         />
 
-        {/* LED dot */}
         <div className="flex items-center justify-center w-[18px]">
           <div
             className="w-[7px] h-[7px] rounded-full"
@@ -122,7 +99,6 @@ export default function GoalTicker() {
           />
         </div>
 
-        {/* Label */}
         <span
           className="text-[9.5px] font-extrabold tracking-[0.18em] max-sm:text-[9px] max-sm:tracking-[0.14em]"
           style={{
@@ -133,7 +109,6 @@ export default function GoalTicker() {
           GOALS
         </span>
 
-        {/* Stage */}
         <div className="flex-1 relative overflow-hidden h-[22px]">
           {leaving && (
             <div
@@ -186,7 +161,6 @@ export default function GoalTicker() {
           )}
         </div>
 
-        {/* Meta pill */}
         <div
           className="py-[3px] px-2 rounded-full text-[11px] font-bold max-sm:text-[10px] max-sm:py-[2px] max-sm:px-[7px]"
           style={{

@@ -1,30 +1,25 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseSync";
+import React, { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { UploadCloud, File, Download, Trash2, Loader2 } from "lucide-react";
-import { useAuth } from "@/lib/AuthContext";
+
+const BUCKET_NAME = "pliki";
+
+const fetchFilesFromStorage = async () => {
+  const { data, error } = await supabase.storage.from(BUCKET_NAME).list();
+  if (error) throw error;
+  return data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+};
 
 export default function FilesPage() {
-  const [files, setFiles] = useState([]);
+  const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
-  const { session } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
-  const BUCKET_NAME = "pliki";
 
-  useEffect(() => {
-    fetchFiles();
-  }, []);
-
-  const fetchFiles = async () => {
-    const { data, error } = await supabase.storage.from(BUCKET_NAME).list();
-    if (error) {
-      console.error("Błąd pobierania plików:", error);
-    } else {
-      // Sortowanie: najnowsze na górze
-      setFiles(
-        data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
-      );
-    }
-  };
+  const { data: files = [] } = useQuery({
+    queryKey: ["files"],
+    queryFn: fetchFilesFromStorage,
+  });
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -36,53 +31,11 @@ export default function FilesPage() {
         .upload(fileName, file, { upsert: false });
 
       if (error) throw error;
-      fetchFiles();
+      queryClient.invalidateQueries({ queryKey: ["files"] });
     } catch (error) {
       alert("Błąd podczas wgrywania: " + error.message);
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
-
-  const uploadFile = async (event) => {
-    try {
-      setUploading(true);
-      const file = event.target.files[0];
-      if (!file) return;
-
-      // Unikalna nazwa pliku, żeby uniknąć konfliktów
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}_${file.name}`;
-
-      const { error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, file, { upsert: false });
-
-      if (error) throw error;
-      fetchFiles();
-    } catch (error) {
-      alert("Błąd podczas wgrywania: " + error.message);
-    } finally {
-      setUploading(false);
-      event.target.value = null; // Czyszczenie inputa
     }
   };
 
@@ -90,7 +43,6 @@ export default function FilesPage() {
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .createSignedUrl(fileName, 60, { download: true });
-
     if (error) {
       alert("Błąd pobierania: " + error.message);
       return;
@@ -98,11 +50,10 @@ export default function FilesPage() {
 
     const link = document.createElement("a");
     link.href = data.signedUrl;
-
-    const cleanFileName = fileName.substring(fileName.indexOf("_") + 1);
-
-    link.setAttribute("download", cleanFileName);
-
+    link.setAttribute(
+      "download",
+      fileName.substring(fileName.indexOf("_") + 1),
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -110,16 +61,13 @@ export default function FilesPage() {
 
   const deleteFile = async (fileName) => {
     if (!confirm("Na pewno usunąć ten plik?")) return;
-
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .remove([fileName]);
-
     if (error) alert("Błąd usuwania: " + error.message);
-    else fetchFiles();
+    else queryClient.invalidateQueries({ queryKey: ["files"] });
   };
 
-  // Formatowanie rozmiaru pliku (bajty na MB/KB)
   const formatBytes = (bytes) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -130,7 +78,6 @@ export default function FilesPage() {
 
   return (
     <div className="w-full max-w-[1100px] mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">
-      {/* 1. ZUNIFIKOWANY NAGŁÓWEK */}
       <div className="flex items-center justify-between mb-5 shrink-0">
         <h1
           className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
@@ -146,7 +93,6 @@ export default function FilesPage() {
         </h1>
       </div>
 
-      {/* 2. ZUNIFIKOWANY SEPARATOR */}
       <div
         className="flex items-center gap-3 mb-5"
         style={{
@@ -171,14 +117,22 @@ export default function FilesPage() {
         />
       </div>
 
-      {/* 3. KARTA W STYLU DASHBOARDU */}
       <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={`rounded-3xl p-8 mb-8 flex flex-col items-center justify-center text-center relative transition-all duration-300 ${
-          isDragging ? "bg-white/[0.08] border-[#6BE3A4]/50 scale-[1.02]" : ""
-        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          if (e.dataTransfer.files.length > 0)
+            handleFileUpload(e.dataTransfer.files[0]);
+        }}
+        className={`rounded-3xl p-8 mb-8 flex flex-col items-center justify-center text-center relative transition-all duration-300 ${isDragging ? "bg-white/[0.08] border-[#6BE3A4]/50 scale-[1.02]" : ""}`}
         style={{
           background: isDragging
             ? "rgba(255,255,255,0.08)"
@@ -187,9 +141,7 @@ export default function FilesPage() {
           boxShadow: isDragging
             ? "0 0 30px rgba(107,227,164,0.15)"
             : "0 12px 40px rgba(0,0,0,0.45)",
-          border: `1px ${isDragging ? "dashed" : "solid"} ${
-            isDragging ? "#6BE3A4" : "rgba(255,255,255,0.05)"
-          }`,
+          border: `1px ${isDragging ? "dashed" : "solid"} ${isDragging ? "#6BE3A4" : "rgba(255,255,255,0.05)"}`,
         }}
       >
         <UploadCloud className="w-12 h-12 text-[#6BE3A4] mb-4 opacity-80" />
@@ -199,7 +151,6 @@ export default function FilesPage() {
           tylko dla Ciebie.
         </p>
 
-        {/* 4. GŁÓWNY PRZYCISK Z DASHBOARDU */}
         <label
           className="px-6 py-[11px] rounded-xl text-[13px] font-bold cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
           style={{
@@ -227,7 +178,6 @@ export default function FilesPage() {
         </label>
       </div>
 
-      {/* Lista plików */}
       <div className="space-y-3">
         <div
           className="flex items-center gap-3 mb-5"
@@ -261,7 +211,6 @@ export default function FilesPage() {
 
         {files.map(
           (file) =>
-            // Ignorujemy ukryty plik konfiguracyjny Supabase
             file.name !== ".emptyFolderPlaceholder" && (
               <div
                 key={file.id}
@@ -273,7 +222,6 @@ export default function FilesPage() {
                   </div>
                   <div className="truncate">
                     <div className="text-sm font-semibold text-white/90 truncate mb-0.5">
-                      {/* Usuwamy timestamp z wyświetlanej nazwy dla czystości */}
                       {file.name.substring(file.name.indexOf("_") + 1)}
                     </div>
                     <div className="text-[11px] font-mono text-white/40">
@@ -282,7 +230,6 @@ export default function FilesPage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2 pl-4 shrink-0">
                   <button
                     onClick={() => downloadFile(file.name)}

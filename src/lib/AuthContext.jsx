@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { supabase, startSync, stopSync } from "./supabaseSync";
+import { supabase } from "./supabase"; // Używamy tego pliku tylko do importu zainicjalizowanego klienta
 
 const AuthContext = createContext();
 
@@ -16,7 +16,6 @@ export const AuthProvider = ({ children }) => {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user?.id) startSync(session.user.id);
       setIsLoadingAuth(false);
     });
 
@@ -24,11 +23,6 @@ export const AuthProvider = ({ children }) => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user?.id) {
-        startSync(session.user.id);
-      } else {
-        stopSync();
-      }
       setIsLoadingAuth(false);
     });
 
@@ -47,7 +41,6 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Nieprawidłowy login lub hasło");
       }
 
-      // 2. Skoro mamy e-mail, logujemy się standardową funkcją Supabase
       const { data, error: authError } = await supabase.auth.signInWithPassword(
         {
           email: profile.email,
@@ -66,9 +59,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     if (supabase) {
       await supabase.auth.signOut();
-      stopSync();
-      // Czyszczenie danych na publicznych urządzeniach!
-      localStorage.clear();
+      localStorage.clear(); // Opcjonalnie czyścimy cache na urządzeniu
       window.location.href = "/";
     }
   };

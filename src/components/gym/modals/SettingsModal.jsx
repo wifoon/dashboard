@@ -7,10 +7,21 @@ import {
 } from "@/components/ui/dialog";
 import { Trash2 } from "lucide-react";
 import { uid } from "@/utils/gymConfig";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gymApi } from "@/lib/api";
 
-export default function SettingsModal({ open, setOpen, state, setState }) {
+export default function SettingsModal({ open, setOpen, state }) {
+  const queryClient = useQueryClient();
   const [days, setDays] = useState(state.days);
   const [units, setUnits] = useState(state.units);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: gymApi.updateSettings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gymState"] });
+      setOpen(false);
+    },
+  });
 
   useEffect(() => {
     if (open) {
@@ -20,15 +31,7 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
   }, [open, state]);
 
   const handleSave = () => {
-    setState((prev) => ({
-      ...prev,
-      days,
-      units,
-      filterDay: days.find((d) => d.id === prev.filterDay)
-        ? prev.filterDay
-        : days[0].id,
-    }));
-    setOpen(false);
+    updateSettingsMutation.mutate({ days, units });
   };
 
   return (
@@ -94,9 +97,10 @@ export default function SettingsModal({ open, setOpen, state, setState }) {
           </div>
           <button
             onClick={handleSave}
+            disabled={updateSettingsMutation.isPending}
             className="w-full h-12 bg-white text-black font-bold rounded-xl"
           >
-            Zapisz
+            {updateSettingsMutation.isPending ? "Zapisywanie..." : "Zapisz"}
           </button>
         </div>
       </DialogContent>

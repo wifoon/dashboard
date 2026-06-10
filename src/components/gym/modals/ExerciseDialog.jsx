@@ -5,8 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trash2 } from "lucide-react";
-import { uid } from "@/utils/gymConfig";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gymApi } from "@/lib/api";
 
 export default function ExerciseDialog({
   state,
@@ -15,42 +15,65 @@ export default function ExerciseDialog({
   exToEdit,
   onClose,
 }) {
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
-    day: "push",
+    day_id: "",
     bw: false,
-    startWeight: 20,
-    repMin: 6,
-    repMax: 8,
+    start_weight: 20,
+    rep_min: 6,
+    rep_max: 8,
     step: 2.5,
   });
 
+  const createMutation = useMutation({
+    mutationFn: gymApi.createExercise,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["gymState"] });
+      setState({ ...state, currentEx: data.id, filterDay: data.day_id });
+      onClose();
+    },
+  });
+  const updateMutation = useMutation({
+    mutationFn: gymApi.updateExercise,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["gymState"] });
+      setState({ ...state, currentEx: data.id, filterDay: data.day_id });
+      onClose();
+    },
+  });
+
   useEffect(() => {
-    if (mode === "edit" && exToEdit) setFormData({ ...exToEdit });
-    else if (mode === "add")
-      setFormData((p) => ({ ...p, day: state.filterDay, name: "", bw: false }));
+    if (mode === "edit" && exToEdit) {
+      setFormData({
+        name: exToEdit.name,
+        day_id: exToEdit.day_id,
+        bw: exToEdit.bw,
+        start_weight: exToEdit.start_weight,
+        rep_min: exToEdit.rep_min,
+        rep_max: exToEdit.rep_max,
+        step: exToEdit.step,
+      });
+    } else if (mode === "add") {
+      setFormData((p) => ({
+        ...p,
+        day_id: state.filterDay,
+        name: "",
+        bw: false,
+      }));
+    }
   }, [mode, exToEdit, state.filterDay]);
 
   const handleSave = () => {
     if (!formData.name.trim()) return;
-    const newEx = {
-      ...formData,
-      id: mode === "edit" ? exToEdit.id : uid(),
-      name: formData.name.trim(),
-    };
-    setState((prev) => {
-      const nextExs =
-        mode === "edit"
-          ? prev.exercises.map((e) => (e.id === exToEdit.id ? newEx : e))
-          : [...prev.exercises, newEx];
-      return {
-        ...prev,
-        exercises: nextExs,
-        currentEx: newEx.id,
-        filterDay: newEx.day,
-      };
-    });
-    onClose();
+    if (mode === "edit") {
+      updateMutation.mutate({
+        id: exToEdit.id,
+        updates: { ...formData, name: formData.name.trim() },
+      });
+    } else {
+      createMutation.mutate({ ...formData, name: formData.name.trim() });
+    }
   };
 
   return (
@@ -73,8 +96,8 @@ export default function ExerciseDialog({
             {state.days.map((d) => (
               <button
                 key={d.id}
-                onClick={() => setFormData({ ...formData, day: d.id })}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg ${formData.day === d.id ? "bg-white text-black" : "text-white/50"}`}
+                onClick={() => setFormData({ ...formData, day_id: d.id })}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg ${formData.day_id === d.id ? "bg-white text-black" : "text-white/50"}`}
               >
                 {d.name}
               </button>
@@ -102,9 +125,10 @@ export default function ExerciseDialog({
             </button>
             <button
               onClick={handleSave}
+              disabled={createMutation.isPending || updateMutation.isPending}
               className="flex-1 h-12 bg-white text-black rounded-xl text-sm font-bold"
             >
-              Dodaj
+              Zapisz
             </button>
           </div>
         </div>

@@ -10,36 +10,69 @@ import {
 import { format, subDays, startOfDay, isSameDay, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
 import { TrendingUp } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gymApi } from "@/lib/api";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
 
-export default function WeightTracker({
-  wtEntries,
-  setWtEntries,
-  todayKey,
-  units,
-}) {
+export default function WeightTracker({ wtEntries, todayKey, units }) {
+  const queryClient = useQueryClient();
   const [dailyInput, setDailyInput] = useState("");
   const [isEditing, setIsEditing] = useState(false);
 
-  const todayEntry = wtEntries.find((e) => e.dateKey === todayKey);
+  const todayEntry = wtEntries.find((e) => e.date_key === todayKey);
   const lastEntry = wtEntries[wtEntries.length - 1];
+
+  // 🚀 OPTYMISTYCZNA MUTACJA WAGI
+  const weightMutation = useMutation({
+    mutationFn: gymApi.saveWeight,
+    onMutate: async (newEntry) => {
+      await queryClient.cancelQueries({ queryKey: ["gymState"] });
+      const previousState = queryClient.getQueryData(["gymState"]);
+
+      queryClient.setQueryData(["gymState"], (old) => {
+        if (!old) return old;
+        const updatedEntries = [...old.weightEntries];
+        const existingIdx = updatedEntries.findIndex(
+          (e) => e.date_key === newEntry.dateKey,
+        );
+
+        if (existingIdx >= 0) {
+          updatedEntries[existingIdx] = {
+            ...updatedEntries[existingIdx],
+            weight: newEntry.weight,
+          };
+        } else {
+          updatedEntries.push({
+            id: "temp",
+            user_id: "temp",
+            date_key: newEntry.dateKey,
+            weight: newEntry.weight,
+          });
+        }
+
+        return { ...old, weightEntries: updatedEntries };
+      });
+
+      setIsEditing(false); // Natychmiast zamykamy okienko edycji
+      return { previousState };
+    },
+    onError: (err, newEntry, context) => {
+      if (context?.previousState)
+        queryClient.setQueryData(["gymState"], context.previousState);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["gymState"] });
+    },
+  });
 
   const handleSaveWeight = () => {
     const w = parseFloat(dailyInput);
     if (isNaN(w) || w <= 0) return;
-    const newArr = [...wtEntries];
-    const existingIdx = newArr.findIndex((e) => e.dateKey === todayKey);
-    if (existingIdx >= 0) newArr[existingIdx].weight = w;
-    else {
-      newArr.push({ dateKey: todayKey, weight: w });
-      newArr.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-    }
-    setWtEntries(newArr);
-    setIsEditing(false);
+    weightMutation.mutate({ dateKey: todayKey, weight: w });
   };
 
   const chartData = useMemo(() => {
@@ -50,7 +83,7 @@ export default function WeightTracker({
     for (let i = 29; i >= 0; i--) {
       const targetDate = startOfDay(subDays(new Date(), i));
       const entry = wtEntries.find((e) =>
-        isSameDay(parseISO(e.dateKey), targetDate),
+        isSameDay(parseISO(e.date_key), targetDate),
       );
       if (entry) lastKnown = entry.weight;
       data.push({
@@ -83,7 +116,6 @@ export default function WeightTracker({
           Body Weight
         </span>
       </div>
-
       <div className="flex items-baseline gap-2 mb-6">
         <span className="text-5xl font-bold tracking-tight text-white">
           {lastEntry ? lastEntry.weight.toFixed(1) : "—"}
@@ -181,7 +213,6 @@ export default function WeightTracker({
               onChange={(e) => setDailyInput(e.target.value)}
               className="w-full bg-transparent text-center text-lg font-bold text-white outline-none"
               placeholder={lastEntry ? lastEntry.weight.toFixed(1) : "0.0"}
-              style={{ appearance: "none", MozAppearance: "textfield" }}
             />
             <button
               onClick={() =>
@@ -199,6 +230,7 @@ export default function WeightTracker({
           </div>
           <button
             onClick={handleSaveWeight}
+            disabled={weightMutation.isPending}
             className="rounded-2xl h-[60px] px-6 font-bold transition-all shadow-[0_4px_14px_rgba(255,255,255,0.15)] flex items-center justify-center text-[13px] active:scale-95"
             style={{
               background: "linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%)",

@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { gymApi } from "@/lib/api";
+import { CONFIG, PHOTO_KEY } from "@/utils/gymConfig";
 import { Settings, Camera, ChevronRight } from "lucide-react";
-import { CONFIG, LS_KEY, WT_KEY, PHOTO_KEY, uid } from "@/utils/gymConfig";
 
 import WeightTracker from "@/components/gym/WeightTracker";
 import WorkoutLogger from "@/components/gym/WorkoutLogger";
@@ -9,32 +11,15 @@ import SettingsModal from "@/components/gym/modals/SettingsModal";
 import PhotoLibraryModal from "@/components/gym/modals/PhotoLibraryModal";
 
 export default function GymPage() {
-  const [state, setState] = useState(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return {
-      units: CONFIG.units,
-      days: CONFIG.days,
-      exercises: CONFIG.defaultExercises.map((e) => ({ ...e, id: uid() })),
-      logs: {},
-      filterDay: CONFIG.days[0].id,
-      currentEx: null,
-    };
-  });
+  const queryClient = useQueryClient();
+  const [filterDay, setFilterDay] = useState(null);
+  const [currentEx, setCurrentEx] = useState(null);
 
-  const [wtEntries, setWtEntries] = useState(() => {
-    try {
-      const raw = localStorage.getItem(WT_KEY);
-      return raw
-        ? JSON.parse(raw).sort((a, b) => a.dateKey.localeCompare(b.dateKey))
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [photoLibraryOpen, setPhotoLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
 
+  // Zdjęcia zostawiamy w localStorage, bo nie stworzyliśmy dla nich tabeli SQL
   const [photos, setPhotos] = useState(() => {
     try {
       const raw = localStorage.getItem(PHOTO_KEY);
@@ -44,83 +29,66 @@ export default function GymPage() {
     }
   });
 
-  const isInitialMount1 = useRef(true);
-  const isInitialMount2 = useRef(true);
-  const isInitialMount3 = useRef(true);
+  useEffect(() => {
+    localStorage.setItem(PHOTO_KEY, JSON.stringify(photos));
+  }, [photos]);
 
-  const [photoLibraryOpen, setPhotoLibraryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState("");
+  // Pobieranie kompletnego stanu modułu gym z bazy Supabase
+  const { data: gymState, isLoading } = useQuery({
+    queryKey: ["gymState"],
+    queryFn: gymApi.fetchGymState,
+  });
 
-  const saveToLS = useCallback((key, data) => {
-    const current = localStorage.getItem(key);
-    const next = JSON.stringify(data);
-    if (current !== next) {
-      localStorage.setItem(key, next);
-      window.dispatchEvent(
-        new CustomEvent("synced-storage-changed", { detail: { key } }),
-      );
-    }
-  }, []);
+  // Mutacja inicjalizująca plan dla nowego konta
+  const seedMutation = useMutation({
+    mutationFn: () =>
+      gymApi.seedDefaultPlan(CONFIG.days, CONFIG.defaultExercises),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gymState"] }),
+  });
 
   useEffect(() => {
-    if (isInitialMount1.current) {
-      isInitialMount1.current = false;
-      return;
+    if (gymState?.isNewUser && !seedMutation.isPending) {
+      seedMutation.mutate();
+    } else if (gymState && !filterDay && gymState.days?.length > 0) {
+      setFilterDay(gymState.days[0].id);
     }
-    saveToLS(LS_KEY, state);
-  }, [state, saveToLS]);
-
-  useEffect(() => {
-    if (isInitialMount2.current) {
-      isInitialMount2.current = false;
-      return;
-    }
-    saveToLS(WT_KEY, wtEntries);
-  }, [wtEntries, saveToLS]);
-
-  useEffect(() => {
-    if (isInitialMount3.current) {
-      isInitialMount3.current = false;
-      return;
-    }
-    saveToLS(PHOTO_KEY, photos);
-  }, [photos, saveToLS]);
-
-  useEffect(() => {
-    const syncHandler = () => {
-      try {
-        const rawLs = localStorage.getItem(LS_KEY);
-        if (rawLs) setState(JSON.parse(rawLs));
-
-        const rawWt = localStorage.getItem(WT_KEY);
-        if (rawWt)
-          setWtEntries(
-            JSON.parse(rawWt).sort((a, b) =>
-              a.dateKey.localeCompare(b.dateKey),
-            ),
-          );
-
-        const rawPh = localStorage.getItem(PHOTO_KEY);
-        if (rawPh) setPhotos(JSON.parse(rawPh));
-      } catch (e) {}
-    };
-
-    window.addEventListener("storage-synced", syncHandler);
-    return () => window.removeEventListener("storage-synced", syncHandler);
-  }, []);
+  }, [gymState, filterDay]);
 
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(""), 2000);
   };
 
+  if (isLoading || !gymState || seedMutation.isPending) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a0b]">
+        <div className="w-8 h-8 border-4 border-white/20 border-t-[#6BE3A4] rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
+  // Struktura stanu wstrzykiwana do podkomponentów
+  const legacyStateMock = {
+    units: gymState.units,
+    days: gymState.days,
+    exercises: gymState.exercises,
+    logs: gymState.logs,
+    filterDay: filterDay || gymState.days[0]?.id,
+    currentEx: currentEx,
+  };
+
+  const setLegacyStateMock = (next) => {
+    if (next.filterDay !== legacyStateMock.filterDay)
+      setFilterDay(next.filterDay);
+    if (next.currentEx !== legacyStateMock.currentEx)
+      setCurrentEx(next.currentEx);
+  };
+
   return (
     <div className="w-full max-w-6xl mx-auto pt-[max(24px,env(safe-area-inset-top))] px-5 pb-32 font-sans relative z-10">
-      {/* 1. ZUNIFIKOWANY NAGŁÓWEK */}
       <div className="flex items-center justify-between mb-5 shrink-0">
         <h1
           className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
@@ -169,11 +137,11 @@ export default function GymPage() {
           </div>
 
           <WeightTracker
-            wtEntries={wtEntries}
-            setWtEntries={setWtEntries}
+            wtEntries={gymState.weightEntries}
             todayKey={todayKey}
-            units={state.units}
+            units={legacyStateMock.units}
           />
+
           <button
             onClick={() => setPhotoLibraryOpen(true)}
             className="w-full flex items-center justify-between rounded-3xl p-6 transition-all active:scale-[0.98] group text-left hover:bg-white/[0.06]"
@@ -224,12 +192,14 @@ export default function GymPage() {
             />
           </div>
 
-          <WorkoutLogger state={state} setState={setState} />
+          <WorkoutLogger
+            state={legacyStateMock}
+            setState={setLegacyStateMock}
+          />
           <WorkoutHistory
-            state={state}
-            setState={setState}
+            state={legacyStateMock}
             photos={photos}
-            units={state.units}
+            units={legacyStateMock.units}
           />
         </div>
       </div>
@@ -240,15 +210,14 @@ export default function GymPage() {
         photos={photos}
         setPhotos={setPhotos}
         todayKey={todayKey}
-        lastWt={wtEntries[wtEntries.length - 1]}
-        units={state.units}
+        lastWt={gymState.weightEntries[gymState.weightEntries.length - 1]}
+        units={legacyStateMock.units}
         showToast={showToast}
       />
       <SettingsModal
         open={settingsOpen}
         setOpen={setSettingsOpen}
-        state={state}
-        setState={setState}
+        state={legacyStateMock}
       />
       <div
         className={`fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-xl border border-white/20 text-white px-5 py-3 rounded-full text-sm font-medium z-[500] transition-all duration-300 pointer-events-none ${toastMsg ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}

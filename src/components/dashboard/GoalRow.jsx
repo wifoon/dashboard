@@ -2,18 +2,13 @@ import { useState, useRef, useEffect } from "react";
 
 export default function GoalRow({
   goal,
-  index,
   readOnly,
   onToggle,
   onEdit,
   onDelete,
   onQueue,
-  onDragStart,
-  onDragOver,
-  onDrop,
 }) {
   const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(goal.text);
   const textRef = useRef(null);
   const [flashing, setFlashing] = useState(false);
 
@@ -23,7 +18,6 @@ export default function GoalRow({
   useEffect(() => {
     if (editing && textRef.current) {
       textRef.current.focus();
-      // Place caret at end
       const range = document.createRange();
       range.selectNodeContents(textRef.current);
       range.collapse(false);
@@ -36,7 +30,7 @@ export default function GoalRow({
   const commitEdit = () => {
     const newText = textRef.current?.innerText?.trim();
     if (newText && newText !== goal.text) {
-      onEdit(index, newText);
+      onEdit(newText);
     }
     setEditing(false);
   };
@@ -55,7 +49,7 @@ export default function GoalRow({
   const handleQueue = () => {
     setFlashing(true);
     setTimeout(() => {
-      onQueue(index);
+      onQueue();
       setFlashing(false);
     }, 480);
   };
@@ -84,27 +78,9 @@ export default function GoalRow({
         border: `1px solid ${rowBorder}`,
         ...rowStyle,
       }}
-      draggable={!readOnly}
-      onDragStart={(e) => onDragStart?.(e, index)}
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver?.(e, index);
-      }}
-      onDrop={(e) => onDrop?.(e, index)}
     >
-      {/* Drag handle */}
-      {!readOnly && (
-        <span
-          className="w-[14px] text-[14px] cursor-grab opacity-0 group-hover:opacity-60 transition-opacity select-none"
-          style={{ color: "var(--text-tertiary)", letterSpacing: "-2px" }}
-        >
-          ⋮⋮
-        </span>
-      )}
-
-      {/* Checkbox */}
       <button
-        onClick={() => !readOnly && onToggle(index)}
+        onClick={() => !readOnly && onToggle()}
         disabled={readOnly}
         className="w-[22px] h-[22px] rounded-[7px] border-[1.5px] flex items-center justify-center shrink-0 transition-all"
         style={{
@@ -113,7 +89,6 @@ export default function GoalRow({
           boxShadow: isDone ? "0 0 12px rgba(107,227,164,0.40)" : "none",
           cursor: readOnly ? "not-allowed" : "pointer",
         }}
-        title={readOnly ? "Activates at 6 AM tomorrow" : ""}
       >
         {isDone && (
           <div
@@ -126,7 +101,6 @@ export default function GoalRow({
         )}
       </button>
 
-      {/* Text */}
       <div className="flex-1 flex items-center flex-wrap gap-2">
         <span
           ref={textRef}
@@ -153,14 +127,13 @@ export default function GoalRow({
           {goal.text}
         </span>
 
-        {goal.isRollover && !isDone && !editing && (
+        {goal.is_rollover && !isDone && !editing && (
           <span className="inline-flex items-center text-[9px] uppercase tracking-wider font-bold text-[#f2c063]/60 bg-[#f2c063]/10 px-1.5 py-[3px] rounded-md pointer-events-none select-none translate-y-[-1px]">
             Zaległe
           </span>
         )}
       </div>
 
-      {/* Queue button */}
       {!readOnly && (
         <button
           onClick={handleQueue}
@@ -177,14 +150,11 @@ export default function GoalRow({
         </button>
       )}
 
-      {/* Delete */}
       {!readOnly && (
         <button
-          onClick={() => onDelete(index)}
+          onClick={onDelete}
           className="text-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"
           style={{ color: "var(--text-tertiary)" }}
-          onMouseEnter={(e) => (e.target.style.color = "var(--danger)")}
-          onMouseLeave={(e) => (e.target.style.color = "var(--text-tertiary)")}
         >
           ×
         </button>

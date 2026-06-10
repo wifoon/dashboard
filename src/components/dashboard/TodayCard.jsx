@@ -1,103 +1,125 @@
-import { useState, useCallback, useRef } from "react";
-import {
-  getTodayGoals,
-  setTodayGoals,
-  getTomorrowGoals,
-  setTomorrowGoals,
-  getActiveDateString,
-  formatDate,
-  runStreakCheck,
-} from "@/lib/goalStorage";
+import { useState, useRef } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { todosApi } from "@/lib/api";
+import { formatDate } from "@/lib/dates";
 import GoalRow from "./GoalRow";
 import GoalInput from "./GoalInput";
-import { getCalData } from "@/lib/calendarStorage";
 
-export default function TodayCard({ goals, reload }) {
+export default function TodayCard({ goals, dateStr }) {
   const [showAll, setShowAll] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
   const statusTimer = useRef(null);
-  const dragFrom = useRef(null);
+  const queryClient = useQueryClient();
 
-  const dateStr = getActiveDateString();
   const total = goals.length;
   const doneCount = goals.filter((g) => g.done).length;
   const allDone = total > 0 && doneCount === total;
-  const streakCount = runStreakCheck();
 
-  const calData = getCalData();
-  const todayEvents = calData.events
-    .filter((e) => e.date === dateStr)
-    .sort((a, b) => a.time.localeCompare(b.time));
+  // 🚀 OPTYMISTYCZNA MUTACJA: Przełączanie statusu (Znika delay przy kliknięciu!)
+  const toggleMutation = useMutation({
+    mutationFn: todosApi.updateTodo,
+    onMutate: async ({ id, updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
 
-  const showStatus = (text, color, duration = 3500) => {
-    clearTimeout(statusTimer.current);
-    setStatusMsg({ text, color });
-    statusTimer.current = setTimeout(() => setStatusMsg(null), duration);
-  };
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? old.map((t) => (t.id === id ? { ...t, ...updates } : t)) : [],
+      );
 
-  const handleToggle = (idx) => {
-    const g = [...goals];
-    g[idx] = { ...g[idx], done: !g[idx].done };
-    if (g[idx].done) g[idx].doneAt = Date.now();
-    else delete g[idx].doneAt;
-    setTodayGoals(g);
-    reload();
-  };
-
-  const handleEdit = (idx, newText) => {
-    const g = [...goals];
-    g[idx] = { ...g[idx], text: newText };
-    setTodayGoals(g);
-    reload();
-  };
-
-  const handleDelete = (idx) => {
-    const g = [...goals];
-    g.splice(idx, 1);
-    setTodayGoals(g);
-    reload();
-  };
-
-  const handleQueue = (idx) => {
-    const g = [...goals];
-    g[idx] = { ...g[idx], queued: !g[idx].queued };
-    setTodayGoals(g);
-    setTimeout(reload, 480);
-  };
-
-  const handleAdd = (text, polish) => {
-    const newGoal = { text, done: false };
-    const g = [...goals];
-
-    const firstRolloverIdx = g.findIndex((x) => x.isRollover);
-
-    if (firstRolloverIdx !== -1) {
-      g.splice(firstRolloverIdx, 0, newGoal);
-    } else {
-      g.push(newGoal);
-    }
-
-    setTodayGoals(g);
-    reload();
-  };
-
-  const handlePush = () => {
-    if (!confirm("Push all remaining goals to tomorrow?")) return;
-    const unchecked = goals.filter((g) => !g.done);
-    const tmr = getTomorrowGoals();
-    const tmrTexts = new Set(tmr.map((g) => g.text));
-    for (const g of unchecked) {
-      if (!tmrTexts.has(g.text)) {
-        tmr.push({ text: g.text, done: false });
+      return { previousTodos };
+    },
+    onError: (err, newTodo, context) => {
+      if (context?.previousTodos) {
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
       }
-    }
-    setTomorrowGoals(tmr);
-    const remaining = goals.filter((g) => g.done);
-    setTodayGoals(remaining);
-    reload();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] });
+    },
+  });
+
+  // 🚀 OPTYMISTYCZNA MUTACJA: Dodawanie zadania (Pojawia się od razu)
+  const addMutation = useMutation({
+    mutationFn: todosApi.createTodo,
+    onMutate: async (newTodoPayload) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
+
+      const temporaryTodo = {
+        id: "temp-" + Date.now(),
+        text: newTodoPayload.text,
+        date: dateStr,
+        done: false,
+        queued: false,
+        is_rollover: false,
+        created_at: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? [...old, temporaryTodo] : [temporaryTodo],
+      );
+
+      return { previousTodos };
+    },
+    onError: (err, newTodo, context) => {
+      if (context?.previousTodos) {
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] });
+    },
+  });
+
+  // 🚀 OPTYMISTYCZNA MUTACJA: Usuwanie zadania (Znika natychmiast z ekranu)
+  const deleteMutation = useMutation({
+    mutationFn: todosApi.deleteTodo,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
+
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? old.filter((t) => t.id !== id) : [],
+      );
+
+      return { previousTodos };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousTodos) {
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] });
+    },
+  });
+
+  const handleToggle = (goal) => {
+    toggleMutation.mutate({
+      id: goal.id,
+      updates: {
+        done: !goal.done,
+        done_at: !goal.done ? new Date().toISOString() : null,
+      },
+    });
   };
 
-  const hasUnchecked = goals.some((g) => !g.done);
+  const handleEdit = (id, newText) => {
+    toggleMutation.mutate({ id, updates: { text: newText } });
+  };
+
+  const handleDelete = (id) => {
+    deleteMutation.mutate(id);
+  };
+
+  const handleQueue = (goal) => {
+    toggleMutation.mutate({ id: goal.id, updates: { queued: !goal.queued } });
+  };
+
+  const handleAdd = (text) => {
+    addMutation.mutate({ text, date: dateStr });
+  };
+
   const visibleGoals = showAll ? goals : goals.slice(0, 5);
   const hiddenCount = goals.length - 5;
 
@@ -156,52 +178,13 @@ export default function TodayCard({ goals, reload }) {
             </span>
           </div>
         </div>
-
-        <div
-          className="inline-flex items-center gap-1.5 py-2 px-3 rounded-full text-[11px]"
-          style={{
-            background:
-              streakCount > 0
-                ? "rgba(242,192,99,0.10)"
-                : "rgba(255,255,255,0.04)",
-            color: streakCount > 0 ? "#F2C063" : "var(--text-tertiary)",
-            border:
-              streakCount > 0
-                ? "1px solid rgba(242,192,99,0.32)"
-                : "1px solid transparent",
-          }}
-        >
-          <span
-            className="text-[13px]"
-            style={{
-              filter:
-                streakCount > 0
-                  ? "drop-shadow(0 0 6px rgba(242,192,99,0.6))"
-                  : "none",
-            }}
-          >
-            ⚡
-          </span>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {streakCount}
-          </span>
-          <span className="uppercase" style={{ letterSpacing: "0.10em" }}>
-            day streak
-          </span>
-        </div>
       </div>
 
       {total > 0 && (
         <div className="flex gap-1 h-1.5 mb-6">
-          {goals.map((g, i) => (
+          {goals.map((g) => (
             <div
-              key={i}
+              key={g.id}
               className="flex-1 rounded-full transition-all"
               style={{
                 background: g.done ? "#6BE3A4" : "rgba(255,255,255,0.08)",
@@ -212,131 +195,40 @@ export default function TodayCard({ goals, reload }) {
         </div>
       )}
 
-      {todayEvents.length > 0 && (
-        <div className="mb-6 space-y-2">
-          <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40 mb-3 ml-1 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/60 animate-pulse"></span>
-            Wydarzenia na dziś
-          </div>
-          <div className="grid gap-2">
-            {todayEvents.map((ev) => {
-              const tag = calData.tags.find((t) => t.id === ev.tagId);
-              return (
-                <div
-                  key={ev.id}
-                  className="flex items-center gap-3 bg-white/[0.02] hover:bg-white/[0.04] transition-colors border border-white/5 rounded-2xl p-3"
-                >
-                  <div
-                    className="text-[12px] font-bold font-mono px-2.5 py-1 rounded-lg"
-                    style={{
-                      color: tag ? tag.color : "white",
-                      backgroundColor: tag
-                        ? `${tag.color}1A`
-                        : "rgba(255,255,255,0.10)",
-                    }}
-                  >
-                    {ev.time}
-                  </div>
-                  <div className="flex-1 text-[13px] font-medium text-white/90">
-                    {ev.title}
-                  </div>
-                  {tag && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/5 shrink-0">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{
-                          backgroundColor: tag.color,
-                          boxShadow: `0 0 8px ${tag.color}80`,
-                        }}
-                      />
-                      <span
-                        className="text-[10px] font-bold uppercase tracking-wider"
-                        style={{ color: tag.color }}
-                      >
-                        {tag.name}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {goals.length === 0 ? (
         <div
           className="text-xs italic text-center py-3.5"
           style={{ color: "var(--text-tertiary)" }}
         >
-          Brak zaplanowanych zadań na jutro
+          Brak zaplanowanych zadań na dzisiaj
         </div>
       ) : (
         <ul className="list-none p-0 m-0">
-          {visibleGoals.map((g, i) => (
+          {visibleGoals.map((g) => (
             <GoalRow
-              key={`${i}-${g.text}`}
+              key={g.id}
               goal={g}
-              index={i}
               readOnly={false}
-              onToggle={handleToggle}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onQueue={handleQueue}
-              onDragStart={(e, idx) => {
-                dragFrom.current = idx;
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e, toIdx) => {
-                const fromIdx = dragFrom.current;
-                if (fromIdx === null || fromIdx === toIdx) return;
-                const g2 = [...goals];
-                const [item] = g2.splice(fromIdx, 1);
-                g2.splice(toIdx, 0, item);
-                setTodayGoals(g2);
-                reload();
-              }}
+              onToggle={() => handleToggle(g)}
+              onEdit={(newText) => handleEdit(g.id, newText)}
+              onDelete={() => handleDelete(g.id)}
+              onQueue={() => handleQueue(g)}
             />
           ))}
-          {hiddenCount > 0 && !showAll && (
+
+          {hiddenCount > 0 && (
             <li
               className="flex items-center justify-center py-2.5 mb-1.5 rounded-xl cursor-pointer text-xs transition-colors hover:bg-white/[0.04]"
               style={{
                 border: "1px dashed rgba(255,255,255,0.12)",
                 color: "var(--text-tertiary)",
               }}
-              onClick={() => setShowAll(true)}
+              onClick={() => setShowAll(!showAll)}
             >
-              Pokaż ukryte ({hiddenCount}) ▾
-            </li>
-          )}
-          {showAll && hiddenCount > 0 && (
-            <li
-              className="flex items-center justify-center py-2.5 mb-1.5 rounded-xl cursor-pointer text-xs transition-colors hover:bg-white/[0.04]"
-              style={{
-                border: "1px dashed rgba(255,255,255,0.12)",
-                color: "var(--text-tertiary)",
-              }}
-              onClick={() => setShowAll(false)}
-            >
-              Zwiń listę ▴
+              {showAll ? "Zwiń listę ▴" : `Pokaż ukryte (${hiddenCount}) ▾`}
             </li>
           )}
         </ul>
-      )}
-
-      {hasUnchecked && (
-        <button
-          onClick={handlePush}
-          className="w-full py-2.5 rounded-xl text-xs transition-all hover:bg-white/[0.06] mb-2 mt-2"
-          style={{
-            border: "1px dashed rgba(255,255,255,0.12)",
-            color: "var(--text-tertiary)",
-            background: "transparent",
-          }}
-        >
-          Przenieś nieukończone na jutro →
-        </button>
       )}
 
       <GoalInput onAdd={handleAdd} statusMsg={statusMsg} />

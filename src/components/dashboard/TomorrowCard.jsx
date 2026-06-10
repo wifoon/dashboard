@@ -1,53 +1,100 @@
 import { useState, useRef } from "react";
-import {
-  getTomorrowGoals,
-  setTomorrowGoals,
-  getTomorrowDateString,
-  formatDate,
-} from "@/lib/goalStorage";
-import { getCalData } from "@/lib/calendarStorage";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { todosApi, calendarApi } from "@/lib/api";
+import { formatDate } from "@/lib/dates";
 import GoalRow from "./GoalRow";
 import GoalInput from "./GoalInput";
 
-export default function TomorrowCard({ goals, reload }) {
+export default function TomorrowCard({ goals, dateStr }) {
   const [showAll, setShowAll] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
-  const statusTimer = useRef(null);
-  const dragFrom = useRef(null);
+  const queryClient = useQueryClient();
 
-  const dateStr = getTomorrowDateString();
   const total = goals.length;
 
-  const calData = getCalData();
-  const tomorrowEvents = calData.events
+  const { data: events = [] } = useQuery({
+    queryKey: ["calendar_events"],
+    queryFn: calendarApi.fetchEvents,
+  });
+  const { data: tags = [] } = useQuery({
+    queryKey: ["calendar_tags"],
+    queryFn: calendarApi.fetchTags,
+  });
+
+  const tomorrowEvents = events
     .filter((e) => e.date === dateStr)
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  const showStatus = (text, color, duration = 3500) => {
-    clearTimeout(statusTimer.current);
-    setStatusMsg({ text, color });
-    statusTimer.current = setTimeout(() => setStatusMsg(null), duration);
-  };
+  // 🚀 OPTYMISTYCZNA MUTACJA DLA EDYCJI
+  const updateMutation = useMutation({
+    mutationFn: todosApi.updateTodo,
+    onMutate: async ({ id, updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? old.map((t) => (t.id === id ? { ...t, ...updates } : t)) : [],
+      );
+      return { previousTodos };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousTodos)
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
+  });
 
-  const handleEdit = (idx, newText) => {
-    const g = [...goals];
-    g[idx] = { ...g[idx], text: newText };
-    setTomorrowGoals(g);
-    reload();
-  };
+  // 🚀 OPTYMISTYCZNA MUTACJA DLA DODAWANIA
+  const addMutation = useMutation({
+    mutationFn: todosApi.createTodo,
+    onMutate: async (newTodo) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
+      const tempTodo = {
+        id: "temp-" + Date.now(),
+        text: newTodo.text,
+        date: dateStr,
+        done: false,
+        queued: false,
+        is_rollover: false,
+      };
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? [...old, tempTodo] : [tempTodo],
+      );
+      return { previousTodos };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousTodos)
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
+  });
 
-  const handleDelete = (idx) => {
-    const g = [...goals];
-    g.splice(idx, 1);
-    setTomorrowGoals(g);
-    reload();
-  };
+  // 🚀 OPTYMISTYCZNA MUTACJA DLA USUWANIA
+  const deleteMutation = useMutation({
+    mutationFn: todosApi.deleteTodo,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["todos", dateStr] });
+      const previousTodos = queryClient.getQueryData(["todos", dateStr]);
+      queryClient.setQueryData(["todos", dateStr], (old) =>
+        old ? old.filter((t) => t.id !== id) : [],
+      );
+      return { previousTodos };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousTodos)
+        queryClient.setQueryData(["todos", dateStr], context.previousTodos);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["todos", dateStr] }),
+  });
 
-  const handleAdd = (text, polish) => {
-    const g = [...goals, { text, done: false }];
-    setTomorrowGoals(g);
-    reload();
-  };
+  const handleEdit = (id, newText) =>
+    updateMutation.mutate({ id, updates: { text: newText } });
+  const handleDelete = (id) => deleteMutation.mutate(id);
+  const handleAdd = (text) =>
+    addMutation.mutate({ text, date: dateStr, isRollover: false });
 
   const visibleGoals = showAll ? goals : goals.slice(0, 5);
   const hiddenCount = goals.length - 5;
@@ -94,7 +141,7 @@ export default function TomorrowCard({ goals, reload }) {
           </div>
           <div className="grid gap-2">
             {tomorrowEvents.map((ev) => {
-              const tag = calData.tags.find((t) => t.id === ev.tagId);
+              const tag = tags.find((t) => t.id === ev.tag_id);
               return (
                 <div
                   key={ev.id}
@@ -139,29 +186,15 @@ export default function TomorrowCard({ goals, reload }) {
         </div>
       ) : (
         <ul className="list-none p-0 m-0">
-          {visibleGoals.map((g, i) => (
+          {visibleGoals.map((g) => (
             <GoalRow
-              key={`${i}-${g.text}`}
+              key={g.id}
               goal={g}
-              index={i}
               readOnly={true}
               onToggle={() => {}}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
+              onEdit={(newText) => handleEdit(g.id, newText)}
+              onDelete={() => handleDelete(g.id)}
               onQueue={() => {}}
-              onDragStart={(e, idx) => {
-                dragFrom.current = idx;
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e, toIdx) => {
-                const fromIdx = dragFrom.current;
-                if (fromIdx === null || fromIdx === toIdx) return;
-                const g2 = [...goals];
-                const [item] = g2.splice(fromIdx, 1);
-                g2.splice(toIdx, 0, item);
-                setTomorrowGoals(g2);
-                reload();
-              }}
             />
           ))}
           {hiddenCount > 0 && !showAll && (
