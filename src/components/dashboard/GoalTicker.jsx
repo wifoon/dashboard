@@ -22,7 +22,7 @@ export default function GoalTicker({ todayGoals = [] }) {
         },
       ];
     } else if (doneCount === total) {
-      newItems = [{ status: "done", text: "✓ Wszystkie zadania wykonane." }];
+      newItems = [{ status: "done", text: "Wszystkie zadania wykonane." }];
     } else {
       newItems = todayGoals
         .filter((g) => !g.done)
