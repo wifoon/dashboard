@@ -584,10 +584,10 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="w-full max-w-[1200px] mx-auto pt-[max(16px,env(safe-area-inset-top))] px-3 md:px-5 pb-32 md:pb-0 relative z-10 md:h-[calc(100vh-140px)] flex flex-col">
-      <div className="flex items-center justify-between mb-5 shrink-0">
+    <div className="w-full max-w-[1400px] mx-auto pt-[max(16px,env(safe-area-inset-top))] px-3 md:px-5 xl:px-6 pb-32 md:pb-4 relative z-10 md:h-[calc(100vh-140px)] flex flex-col">
+      <div className="flex items-center justify-between mb-3 md:mb-4 shrink-0">
         <h1
-          className="text-[28px] font-bold tracking-tight max-sm:text-[22px] m-0"
+          className="text-[28px] md:text-[34px] font-bold tracking-tight m-0"
           style={{
             background: "linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%)",
             WebkitBackgroundClip: "text",
@@ -598,45 +598,86 @@ export default function CalendarPage() {
         >
           Kalendarz
         </h1>
-        <button
-          onClick={() => setTagsModalOpen(true)}
-          className="w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-white/60 transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-      </div>
 
-      <div className="rounded-[32px] md:p-6 md:bg-white/[0.04] md:backdrop-blur-xl md:shadow-[0_12px_40px_rgba(0,0,0,0.45)] md:border md:border-white/5 flex-1 flex flex-col min-h-0">
-        <div className="flex items-center justify-between mb-4 md:mb-6 px-2 md:px-0 shrink-0">
-          <div className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">
-            {format(currentDate, "MMMM yyyy", { locale: pl })}
-          </div>
-          <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-2xl p-1.5 shadow-inner">
+        <div className="hidden md:flex items-center gap-4">
+          {/* Kontrolki miesięcy przeniesione na prawą stronę */}
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-              className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
+              className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-6 h-6" />
             </button>
+            <h2 className="w-[180px] text-center text-xl xl:text-2xl font-bold text-white/90 capitalize tracking-wide">
+              {format(currentDate, "MMMM yyyy", { locale: pl })}
+            </h2>
+            <button
+              onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+              className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+
             <button
               onClick={() => {
                 const today = new Date();
                 setCurrentDate(today);
                 setSelectedDay(today);
               }}
-              className="px-4 py-2 hover:bg-white/10 rounded-xl text-[13px] font-bold text-white/70 hover:text-white transition-all"
+              className="ml-2 px-3 py-1.5 border border-white/10 hover:border-white/20 hover:bg-white/5 rounded-lg text-sm font-semibold text-white/60 hover:text-white transition-colors"
             >
-              DZIŚ
-            </button>
-            <button
-              onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-              className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
-            >
-              <ChevronRight className="w-5 h-5" />
+              Dziś
             </button>
           </div>
+
+          <button
+            onClick={() => setTagsModalOpen(true)}
+            className="w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-white/60 transition-colors ml-4"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
 
+        {/* Ustawienia mobilne (ukryte na desktopie) */}
+        <button
+          onClick={() => setTagsModalOpen(true)}
+          className="md:hidden w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-white/60 transition-colors"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="md:hidden flex items-center justify-between mb-4 px-2 shrink-0">
+        <div className="text-xl font-black uppercase tracking-widest text-white drop-shadow-md">
+          {format(currentDate, "MMMM yyyy", { locale: pl })}
+        </div>
+        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-2xl p-1.5 shadow-inner">
+          <button
+            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+            className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              const today = new Date();
+              setCurrentDate(today);
+              setSelectedDay(today);
+            }}
+            className="px-4 py-2 hover:bg-white/10 rounded-xl text-[13px] font-bold text-white/70 hover:text-white transition-all"
+          >
+            DZIŚ
+          </button>
+          <button
+            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+            className="p-2 hover:bg-white/10 rounded-xl text-white/70 hover:text-white transition-all active:scale-95"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col min-h-0 relative">
         <div className="block md:hidden">
           <div className="overflow-hidden -mx-3 px-3 mb-6" ref={emblaRef}>
             <div className="flex gap-2">
@@ -702,28 +743,36 @@ export default function CalendarPage() {
           </button>
         </div>
 
-        <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="grid grid-cols-7 gap-2 mb-2 shrink-0 pr-2">
+        <div className="hidden md:flex flex-col min-h-0 border border-white/5 rounded-[24px] bg-[#111113]/60 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl h-full">
+          <div className="grid grid-cols-7 border-b border-white/5 shrink-0 px-2">
             {["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"].map((d) => (
               <div
                 key={d}
-                className="text-center text-[12px] font-bold text-white/30 uppercase tracking-widest"
+                className="py-2 xl:py-3 text-center text-[12px] xl:text-[13px] font-bold text-white/40 uppercase tracking-[0.1em]"
               >
                 {d}
               </div>
             ))}
           </div>
           <div
-            className="grid grid-cols-7 gap-2 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2 content-start"
-            style={{ gridAutoRows: "minmax(90px, auto)" }}
+            className="grid grid-cols-7 px-2 pb-2 gap-x-[2px] gap-y-[2px] flex-1 overflow-y-auto min-h-0 custom-scrollbar"
+            style={{
+              gridTemplateRows: Array.from({ length: daysInMonth.length / 7 }).map((_, weekIdx) => {
+                const weekHasEvents = daysInMonth.slice(weekIdx * 7, (weekIdx + 1) * 7).some(day => events.some(e => e.date === format(day, "yyyy-MM-dd")));
+                return weekHasEvents ? "minmax(85px, 1fr)" : "minmax(45px, 1fr)";
+              }).join(" ")
+            }}
           >
-            {daysInMonth.map((day) => {
+            {daysInMonth.map((day, i) => {
               const dateStr = format(day, "yyyy-MM-dd");
               const dayEvents = events
                 .filter((e) => e.date === dateStr)
                 .sort((a, b) => a.time.localeCompare(b.time));
               const isCurrentMonth = isSameMonth(day, monthStart);
               const isTodayDate = isToday(day);
+
+              const isLastCol = (i + 1) % 7 === 0;
+              const isLastRow = i >= daysInMonth.length - 7;
 
               return (
                 <div
@@ -732,63 +781,66 @@ export default function CalendarPage() {
                     setSelectedDay(day);
                     setDetailsModalOpen(true);
                   }}
-                  className={`flex flex-col p-2.5 rounded-xl cursor-pointer border relative transition-colors ${isCurrentMonth ? "bg-black/20 border-white/5 hover:bg-white/[0.06]" : "bg-transparent border-transparent opacity-10 pointer-events-none"}`}
+                  className={`flex flex-col relative transition-all group overflow-hidden
+                    ${!isLastCol ? "border-r border-white/5" : ""} 
+                    ${!isLastRow ? "border-b border-white/5" : ""}
+                    ${isCurrentMonth ? "hover:bg-white/[0.04] cursor-pointer" : "bg-black/20 opacity-30 hover:opacity-50 cursor-pointer"}
+                  `}
                 >
                   <div
-                    className={`text-[12px] font-bold flex justify-between items-center shrink-0 ${isTodayDate ? "text-black" : "text-white/60"}`}
+                    className={`flex items-center justify-between px-2 pt-1 xl:px-3 xl:pt-2 shrink-0 mb-0.5 xl:mb-1`}
                   >
                     <span
-                      className={
-                        isTodayDate
-                          ? "bg-white text-black w-7 h-7 flex items-center justify-center rounded-full font-black"
-                          : ""
-                      }
+                      className={`text-[11px] xl:text-[14px] font-bold w-5 h-5 xl:w-6 xl:h-6 flex items-center justify-center rounded-full z-10 transition-colors
+                        ${
+                          isTodayDate
+                            ? "bg-white text-black"
+                            : isCurrentMonth
+                              ? "text-white/80 group-hover:text-white"
+                              : "text-white/30"
+                        }
+                      `}
                     >
                       {format(day, "d")}
                     </span>
                   </div>
-                  <div className="flex flex-col gap-1.5 mt-2 flex-1">
-                    {dayEvents.slice(0, 3).map((ev) => {
+
+                  <div className="flex-1 px-1 pb-1 xl:px-2 xl:pb-2 overflow-hidden flex flex-col gap-1 xl:gap-1.5 min-h-0">
+                    {dayEvents.slice(0, 2).map((ev) => {
                       const tag = tags.find((t) => t.id === ev.tag_id);
+                      const evColor = tag ? tag.color : "#ffffff";
+
                       return (
                         <Popover key={ev.id}>
                           <PopoverTrigger asChild>
                             <div
                               onClick={(e) => e.stopPropagation()}
-                              className="pl-2.5 pr-2 py-1.5 rounded-lg flex flex-col justify-center border cursor-pointer shrink-0 transition-transform hover:-translate-y-[1px]"
+                              className="px-2 py-1 xl:px-2.5 xl:py-1.5 rounded-[6px] xl:rounded-[8px] flex items-center gap-1.5 xl:gap-2 cursor-pointer shrink-0 transition-transform hover:-translate-y-[1px]"
                               style={{
                                 backgroundColor: ev.is_done
-                                  ? "rgba(107,227,164,0.08)"
-                                  : tag
-                                    ? `${tag.color}15`
-                                    : "rgba(255,255,255,0.03)",
-                                borderColor: ev.is_done
-                                  ? "rgba(107,227,164,0.2)"
-                                  : tag
-                                    ? `${tag.color}30`
-                                    : "rgba(255,255,255,0.08)",
-                                borderLeft: `3.5px solid ${ev.is_done ? "#6BE3A4" : tag ? tag.color : "rgba(255,255,255,0.3)"}`,
-                                opacity: ev.is_done ? 0.6 : 1,
+                                  ? "rgba(255,255,255,0.03)"
+                                  : `${evColor}15`,
+                                border: `1px solid ${ev.is_done ? "rgba(255,255,255,0.05)" : `${evColor}30`}`,
                               }}
                             >
+                              <div
+                                className={`w-1.5 h-1.5 xl:w-2 xl:h-2 rounded-full shrink-0 flex items-center justify-center ${ev.is_done ? "bg-white/20" : ""}`}
+                                style={
+                                  !ev.is_done
+                                    ? {
+                                        backgroundColor: evColor,
+                                        boxShadow: `0 0 8px ${evColor}`,
+                                      }
+                                    : {}
+                                }
+                              ></div>
+
                               <span
-                                className="font-mono text-[11px] font-bold tracking-wide leading-none mb-[2px] flex items-center gap-1"
-                                style={{
-                                  color: ev.is_done
-                                    ? "#6BE3A4"
-                                    : tag
-                                      ? tag.color
-                                      : "rgba(255,255,255,0.7)",
-                                }}
+                                className={`text-[11px] xl:text-[13px] font-medium truncate flex-1 leading-none ${ev.is_done ? "text-white/30 line-through" : "text-white/90"}`}
                               >
-                                {ev.time}
-                                {ev.description && (
-                                  <AlignLeft className="w-2.5 h-2.5 opacity-70" />
-                                )}
-                              </span>
-                              <span
-                                className={`text-[13px] font-semibold leading-tight line-clamp-2 ${ev.is_done ? "text-white/50 line-through" : "text-white/90"}`}
-                              >
+                                <span className="opacity-50 mr-1.5 xl:mr-2 font-mono tracking-tight text-[10px] xl:text-[11px]">
+                                  {ev.time}
+                                </span>
                                 {ev.title}
                               </span>
                             </div>
@@ -799,9 +851,9 @@ export default function CalendarPage() {
                         </Popover>
                       );
                     })}
-                    {dayEvents.length > 3 && (
-                      <div className="mt-0.5 w-full text-center text-[11px] font-bold text-white/40 hover:text-white/70 hover:bg-white/10 bg-white/5 rounded-md py-1.5 border border-white/5 transition-colors cursor-pointer">
-                        +{dayEvents.length - 3} więcej...
+                    {dayEvents.length > 2 && (
+                      <div className="mt-auto pt-0.5 xl:pt-1 text-center text-[10px] xl:text-[12px] font-bold text-white/30 hover:text-white/60 transition-colors">
+                        +{dayEvents.length - 2} więcej
                       </div>
                     )}
                   </div>
